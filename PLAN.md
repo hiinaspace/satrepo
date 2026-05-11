@@ -1,8 +1,8 @@
-# satproto — Initial Implementation Plan
+# satrepo — Initial Implementation Plan
 
 ## Context
 
-`satproto` is a learning-first prototype that explores whether an
+`satrepo` is a learning-first prototype that explores whether an
 ATProto identity's repo can be authored locally and published as static files
 over ordinary HTTP, with a small dynamic shim adapting that static origin back
 into the sync XRPC shape current relays expect. The framing is Git's "dumb HTTP"
@@ -76,7 +76,7 @@ firehose."
 Two cooperating Python packages in one repo:
 
 ```
-satproto/
+satrepo/
   pyproject.toml
   README.md
   CHARTER.md
@@ -143,7 +143,7 @@ my-atproto-repo/
 ```
 
 Private signing and rotation keys still live under
-`~/.config/satproto/<did>/`, outside both the working tree and
+`~/.config/satrepo/<did>/`, outside both the working tree and
 publication output.
 
 ### Static layout (event-log-first first cut)
@@ -234,7 +234,7 @@ versioned event, commit, block, blob, and snapshot artifacts first, then publish
 ### Key/DID model
 
 - secp256k1 signing key + secp256k1 rotation key generated locally with
-  `arroba.util.new_key`, stored at `~/.config/satproto/<did>/`:
+  `arroba.util.new_key`, stored at `~/.config/satrepo/<did>/`:
   `signing.key`, `rotation.key`.
 - `did:plc` genesis op built locally, signed locally with the rotation key,
   POSTed to `plc.directory`. `satrepo init` needs the future shim/PDS URL up

@@ -1,5 +1,5 @@
 [project]
-name = "satproto"
+name = "satrepo"
 version = "0.1.0"
 description = "Static ATProto repo authoring and sync shim prototype"
 readme = "README.md"

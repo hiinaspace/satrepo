@@ -1,6 +1,6 @@
-# satproto
+# satrepo
 
-`satproto` is a prototype for authoring an AT Protocol repository locally,
+`satrepo` is a prototype for authoring an AT Protocol repository locally,
 publishing the repo as static files, and replaying those files through a small
 PDS-shaped sync shim.
 

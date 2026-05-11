@@ -51,12 +51,12 @@ def repo_paths(root: Path | str) -> RepoPaths:
 
 
 def config_home() -> Path:
-    """Return the satproto config home, respecting XDG_CONFIG_HOME."""
+    """Return the satrepo config home, respecting XDG_CONFIG_HOME."""
 
     base = os.environ.get("XDG_CONFIG_HOME")
     if base:
-        return Path(base).expanduser() / "satproto"
-    return Path.home() / ".config" / "satproto"
+        return Path(base).expanduser() / "satrepo"
+    return Path.home() / ".config" / "satrepo"
 
 
 def key_dir_for_did(did: str) -> Path:

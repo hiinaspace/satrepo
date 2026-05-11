@@ -20,7 +20,7 @@ def test_init_creates_local_and_static_layout(tmp_path, monkeypatch):
     assert config.handle == "alice.example"
     assert config.did.startswith("did:plc:")
     assert config.pds_url == "https://shim.example"
-    assert config.key_dir == tmp_path / "config-home" / "satproto" / config.did
+    assert config.key_dir == tmp_path / "config-home" / "satrepo" / config.did
     assert not config.plc_registered
 
     assert (paths.worktree / "app.bsky.actor.profile").is_dir()

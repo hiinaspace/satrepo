@@ -1,4 +1,4 @@
-# satproto Charter
+# satrepo Charter
 
 ## Purpose
 
