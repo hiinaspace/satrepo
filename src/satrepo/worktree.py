@@ -9,6 +9,7 @@ from typing import Iterable
 
 from .errors import SatRepoError
 from .paths import WORKTREE_DIR
+from .rkeys import suggested_rkey, validate_rkey
 
 
 @dataclass(frozen=True)
@@ -44,10 +45,22 @@ def scan_records(root: Path | str) -> list[WorktreeRecord]:
                 raise SatRepoError(f"{record_path} must contain a JSON object")
 
             collection = collection_dir.name
+            rkey = record_path.stem
+            try:
+                validate_rkey(collection, rkey)
+            except SatRepoError as exc:
+                suggestion = suggested_rkey(collection)
+                if suggestion:
+                    raise SatRepoError(
+                        f"{record_path} uses invalid rkey {rkey!r}: {exc}. "
+                        f"Rename it to something like {suggestion}.json"
+                    ) from exc
+                raise SatRepoError(f"{record_path} uses invalid rkey {rkey!r}: {exc}") from exc
+
             records.append(
                 WorktreeRecord(
                     collection=collection,
-                    rkey=record_path.stem,
+                    rkey=rkey,
                     path=record_path,
                     record=record,
                 )

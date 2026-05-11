@@ -117,7 +117,7 @@ my-atproto-repo/
     app.bsky.actor.profile/
       self.json
     app.bsky.feed.post/
-      2026-05-11-hello.json
+      <tid>.json
     blobs/
       avatar.jpg
 
@@ -248,7 +248,7 @@ versioned event, commit, block, blob, and snapshot artifacts first, then publish
 
 ## Implementation phases
 
-### Phase A — CLI publishes a signed repo as static files
+### Phase A — CLI commits signed repo state as static files
 
 Hits charter success criteria 1–3.
 
@@ -257,7 +257,7 @@ Hits charter success criteria 1–3.
    `site/` directories, write keys to `~/.config/...`. For local-only testing,
    allow a placeholder PDS URL and provide `satrepo plc update --pds-url ...`
    before Phase C.
-2. `satrepo publish` — scan `worktree/<nsid>/<rkey>.json` for records, do
+2. `satrepo commit` — scan `worktree/<nsid>/<rkey>.json` for records, do
    minimal lexicon validation (depend on `lexrpc` for schemas, but call
    it as a plain function — no Flask context), diff against the current repo
    contents to build a Write list, call `Repo.create()` (first commit) or
@@ -288,7 +288,7 @@ Hits charter success criteria 1–3.
    from `.satrepo/`.
 
 **Done when**: `satrepo init` produces a valid did:plc resolvable on
-`plc.directory`; `satrepo publish` produces a `site/` whose `snapshot.car`
+`plc.directory`; `satrepo commit` produces a `site/` whose `snapshot.car`
 loads via `arroba.repo.Repo.load` from a `MemoryStorage` populated by the CAR;
 `manifest.json` describes the head and latest seq correctly; every `#commit`
 event has a CAR and ops list that can be converted directly into a
@@ -357,7 +357,7 @@ Hits charter criteria 5–6.
 5. Verify: an external client (e.g., `bsky.app` or a CLI like
    `goat` / `atproto-cli`) can fetch the repo and read the test post.
 
-**Done when**: a test post made via `satrepo publish` is visible through a
+**Done when**: a test post made via `satrepo commit` is visible through a
 third-party ATProto client that resolved our DID and reached the shim.
 
 ## Key files to study & reuse
@@ -413,8 +413,8 @@ End-to-end smoke test for the prototype:
    keys, registers did:plc, scaffolds `worktree/`, `.satrepo/`, and generated
    `site/`. Verify with `curl https://plc.directory/<did>`.
 3. Write `worktree/app.bsky.actor.profile/self.json` with a profile record.
-4. Write `worktree/app.bsky.feed.post/2026-05-11-hello.json` with a post.
-5. `uv run satrepo publish` — emits `site/`.
+4. Write `worktree/app.bsky.feed.post/<tid>.json` with a post.
+5. `uv run satrepo commit` — commits the worktree and emits `site/`.
 6. `python -m http.server 8080 --directory site` (mock static origin).
 7. `uv run satrepo-shim --origin http://localhost:8080 --did did:plc:...`
    (the shim).
@@ -423,7 +423,7 @@ End-to-end smoke test for the prototype:
    - `curl http://localhost:PORT/xrpc/com.atproto.sync.getRepo?did=...` →
      load resulting CAR via arroba, assert head matches.
    - `websocat ws://localhost:PORT/xrpc/com.atproto.sync.subscribeRepos` →
-     observe initial cursor messages, then `uv run satrepo publish` a new
+     observe initial cursor messages, then `uv run satrepo commit` a new
      post and observe a `#commit` event arrive.
 9. Repeat 4–8 with an actual https deployment + a relay's `requestCrawl` to
    close Phase C.

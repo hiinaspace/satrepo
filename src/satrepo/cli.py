@@ -83,11 +83,6 @@ def log_command(
             typer.echo(f"  {op.action:<6} {op.path}")
 
 
-@app.command("publish")
-def publish_command(root: RootOption = Path(".")) -> None:
-    _run_publish(root, verb="published")
-
-
 @app.command("commit")
 def commit_command(root: RootOption = Path(".")) -> None:
     _run_publish(root, verb="committed")
@@ -136,7 +131,12 @@ def plc_update(
 def main(argv: list[str] | None = None) -> int:
     command = typer.main.get_command(app)
     try:
-        command.main(args=sys.argv[1:] if argv is None else argv, prog_name="satrepo", standalone_mode=False)
+        result = command.main(
+            args=sys.argv[1:] if argv is None else argv,
+            prog_name="satrepo",
+            standalone_mode=False,
+        )
+        return result or 0
     except (SatRepoError, ValueError) as exc:
         typer.echo(f"satrepo: error: {exc}", err=True)
         raise SystemExit(2) from exc
@@ -145,7 +145,6 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(exc.exit_code) from exc
     except click.exceptions.Exit as exc:
         return exc.exit_code
-    return 0
 
 
 def _run_publish(root: Path, *, verb: str) -> None:

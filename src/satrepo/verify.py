@@ -12,10 +12,12 @@ from arroba import util
 from carbox.car import read_car
 
 from .config import read_config
+from .errors import SatRepoError
 from .jsonio import read_json
 from .keys import read_private_key
 from .manifest import read_manifest
 from .paths import discover_root
+from .rkeys import validate_rkey
 from .storage_static import StaticStorage
 
 
@@ -177,6 +179,15 @@ def _verify_commit_event(result: VerificationResult, paths, event: dict, signing
         result.errors.append(f"initial commit event has unexpected prevData for seq {event['seq']}")
 
     for op in event.get("ops", []):
+        path = op.get("path")
+        try:
+            if not isinstance(path, str):
+                raise ValueError("path must be a string")
+            collection, rkey = path.split("/", 1)
+            validate_rkey(collection, rkey)
+        except (SatRepoError, ValueError) as exc:
+            result.errors.append(f"invalid op path {path} for seq {event['seq']}: {exc}")
+
         cid = op.get("cid")
         if cid and cid not in block_by_cid:
             result.errors.append(f"op CID {cid} is missing from commit CAR for seq {event['seq']}")

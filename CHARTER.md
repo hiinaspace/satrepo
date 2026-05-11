@@ -84,9 +84,9 @@ The intended local authoring shape is Git-like:
 - Hidden local state under `.satrepo/` contains the repo's machine artifacts:
   refs, blocks, commit CARs, event-log entries, snapshots, blob indexes, and
   publication metadata.
-- A publish command exports a "bare" static view from `.satrepo/` to an ordinary
-  HTTP directory. The static site should not need the editable working tree or
-  any private key material.
+- A push-like command should eventually export a "bare" static view from
+  `.satrepo/` to an ordinary HTTP directory. The static site should not need
+  the editable working tree or any private key material.
 
 ### Dynamic Shim
 

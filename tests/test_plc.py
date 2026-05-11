@@ -7,6 +7,9 @@ from satrepo.paths import repo_paths
 from satrepo.verify import verify_repo
 
 
+POST_TID = "3jzfcijpj2z2a"
+
+
 def test_plc_update_rewrites_unregistered_repo_and_republishes(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
     root = tmp_path / "repo"
@@ -14,7 +17,7 @@ def test_plc_update_rewrites_unregistered_repo_and_republishes(tmp_path, monkeyp
 
     post_dir = root / "worktree" / "app.bsky.feed.post"
     post_dir.mkdir(parents=True, exist_ok=True)
-    (post_dir / "hello.json").write_text(
+    (post_dir / f"{POST_TID}.json").write_text(
         json.dumps(
             {
                 "$type": "app.bsky.feed.post",
@@ -24,7 +27,7 @@ def test_plc_update_rewrites_unregistered_repo_and_republishes(tmp_path, monkeyp
         ),
         encoding="utf-8",
     )
-    assert main(["publish", "--root", str(root)]) == 0
+    assert main(["commit", "--root", str(root)]) == 0
 
     paths = repo_paths(root)
     old_config = read_config(paths.config)
