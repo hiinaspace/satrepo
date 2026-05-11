@@ -9,6 +9,7 @@ from typing import Annotated
 import click
 import typer
 
+from .bsky import create_bsky_post
 from .errors import SatRepoError
 from .init_repo import init_repo
 from .plc import plc_summary, update_pds_url
@@ -18,7 +19,9 @@ from .verify import format_result, verify_repo
 
 app = typer.Typer(help="Local static ATProto repo authoring tools.")
 plc_app = typer.Typer(help="Manage local did:plc state.")
+bsky_app = typer.Typer(help="Bluesky record helpers.")
 app.add_typer(plc_app, name="plc")
+app.add_typer(bsky_app, name="bsky")
 
 
 RootOption = Annotated[Path, typer.Option(help="Checkout root.")]
@@ -97,6 +100,20 @@ def verify_command(root: RootOption = Path(".")) -> None:
     typer.echo(format_result(result))
     if not result.ok:
         raise typer.Exit(1)
+
+
+@bsky_app.command("post")
+def bsky_post(
+    text: Annotated[str, typer.Argument(help="Text for a new app.bsky.feed.post record.")],
+    root: RootOption = Path("."),
+    created_at: Annotated[
+        str | None,
+        typer.Option("--created-at", help="Override record createdAt datetime."),
+    ] = None,
+) -> None:
+    post = create_bsky_post(root, text=text, created_at=created_at)
+    typer.echo(f"created {post.repo_path}")
+    typer.echo(f"file: {post.path}")
 
 
 @plc_app.command("show")

@@ -413,7 +413,8 @@ End-to-end smoke test for the prototype:
    keys, registers did:plc, scaffolds `worktree/`, `.satrepo/`, and generated
    `site/`. Verify with `curl https://plc.directory/<did>`.
 3. Write `worktree/app.bsky.actor.profile/self.json` with a profile record.
-4. Write `worktree/app.bsky.feed.post/<tid>.json` with a post.
+4. `uv run satrepo bsky post "hello from satrepo"` — writes a post record
+   under `worktree/app.bsky.feed.post/<tid>.json`.
 5. `uv run satrepo commit` — commits the worktree and emits `site/`.
 6. `python -m http.server 8080 --directory site` (mock static origin).
 7. `uv run satrepo-shim --origin http://localhost:8080 --did did:plc:...`
