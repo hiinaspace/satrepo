@@ -1,0 +1,31 @@
+[project]
+name = "satproto"
+version = "0.1.0"
+description = "Static ATProto repo authoring and sync shim prototype"
+readme = "README.md"
+authors = [
+    { name = "Hiina Kuukan", email = "hiina@hiina.space" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "arroba",
+]
+
+[project.scripts]
+satrepo = "satrepo.cli:main"
+satrepo-shim = "satrepo_shim.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+arroba = { path = "../../lib/arroba", editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
