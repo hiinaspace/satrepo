@@ -84,7 +84,7 @@ def test_publish_is_noop_without_record_changes(tmp_path, monkeypatch):
 def test_verify_warns_on_non_https_pds_url(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
     root = tmp_path / "repo"
-    assert main(["init", "alice.example", "--pds-url", "shim.example", "--root", str(root)]) == 0
+    assert main(["init", "alice.example", "--pds-url", "http://shim.example", "--root", str(root)]) == 0
     assert main(["publish", "--root", str(root)]) == 0
 
     verification = verify_repo(root)

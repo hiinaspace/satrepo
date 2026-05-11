@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from arroba import did as arroba_did
 from arroba import util
@@ -24,6 +25,16 @@ class PlcGenesis:
     did_doc: dict
 
 
+def normalize_pds_url(pds_url: str) -> str:
+    """Return a canonical absolute PDS service URL."""
+
+    pds_url = pds_url.strip().rstrip("/")
+    parsed = urlparse(pds_url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError("PDS URL must be an absolute http(s) URL, for example https://shim.example")
+    return pds_url
+
+
 def build_genesis_operation(
     *,
     handle: str,
@@ -35,8 +46,7 @@ def build_genesis_operation(
 
     if not arroba_did.HANDLE_RE.fullmatch(handle):
         raise ValueError(f"{handle} is not a valid ATProto handle")
-    if pds_url.endswith("/"):
-        pds_url = pds_url.rstrip("/")
+    pds_url = normalize_pds_url(pds_url)
 
     op = {
         "type": "plc_operation",

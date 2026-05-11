@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .jsonio import read_json, write_json_atomic
+from .did_plc import normalize_pds_url
 
 
 CONFIG_VERSION = 1
@@ -39,7 +40,7 @@ class RepoConfig:
         return cls(
             handle=handle,
             did=did,
-            pds_url=pds_url.rstrip("/"),
+            pds_url=normalize_pds_url(pds_url),
             key_dir=key_dir,
             created_at=utc_now_iso(),
             plc_registered=plc_registered,

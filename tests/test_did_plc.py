@@ -20,3 +20,20 @@ def test_build_genesis_operation_derives_matching_did_doc():
     assert genesis.operation["services"]["atproto_pds"]["endpoint"] == "https://shim.example"
     assert genesis.did_doc["id"] == genesis.did
     assert arroba_did.get_signing_key(genesis.did_doc)
+
+
+def test_build_genesis_operation_rejects_unqualified_pds_url():
+    signing_key = generate_key()
+    rotation_key = generate_key()
+
+    try:
+        build_genesis_operation(
+            handle="alice.example",
+            pds_url="shim.example",
+            signing_key=signing_key,
+            rotation_key=rotation_key,
+        )
+    except ValueError as exc:
+        assert "absolute http(s) URL" in str(exc)
+    else:
+        raise AssertionError("unqualified PDS URL should fail")
