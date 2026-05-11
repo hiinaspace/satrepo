@@ -232,10 +232,12 @@ class StaticStorage(Storage):
         )
 
         prev_data = None
+        since = None
         if prev := decoded.get("prev"):
             prev_block = self.read(prev)
             if prev_block:
                 prev_data = prev_block.decoded.get("data")
+                since = prev_block.decoded.get("rev")
 
         event = {
             "seq": commit.seq,
@@ -244,7 +246,7 @@ class StaticStorage(Storage):
             "time": commit.time.isoformat(),
             "rev": decoded["rev"],
             "commit": str(commit.cid),
-            "since": str(commit_data.prev) if commit_data.prev else None,
+            "since": since,
             "blocks": f"repo/commits/{car_name}",
             "ops": [_commit_op_to_json(op) for op in commit.ops or []],
             "blobs": [],

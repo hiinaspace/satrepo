@@ -3,22 +3,32 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import sys
 from collections.abc import Callable
 
 from aiohttp import web
 
+from .firehose import encode_error_frame, encode_message_frame
 from .origin import OriginError
 from .repo_view import CAR_MIME_TYPE, RepoViewError, StaticRepoView
 
 Handler = Callable[[StaticRepoView, web.Request], web.StreamResponse]
 REPO_VIEW_KEY = web.AppKey("repo_view", StaticRepoView)
+POLL_INTERVAL_KEY = web.AppKey("poll_interval", float)
 
 
-def create_app(*, origin: str, service_did: str = "did:web:localhost") -> web.Application:
+def create_app(
+    *,
+    origin: str,
+    service_did: str = "did:web:localhost",
+    poll_interval: float = 2.0,
+) -> web.Application:
     app = web.Application()
     app[REPO_VIEW_KEY] = StaticRepoView.from_origin(origin, service_did=service_did)
+    app[POLL_INTERVAL_KEY] = poll_interval
     app.router.add_get("/xrpc/_health", health)
+    app.router.add_get("/xrpc/com.atproto.sync.subscribeRepos", subscribe_repos)
     app.router.add_get("/xrpc/{method}", xrpc)
     return app
 
@@ -44,6 +54,29 @@ async def xrpc(request: web.Request) -> web.StreamResponse:
         return _xrpc_error(exc.name, str(exc), status=exc.status)
     except OriginError as exc:
         return _xrpc_error("OriginUnavailable", str(exc), status=502)
+
+
+async def subscribe_repos(request: web.Request) -> web.WebSocketResponse:
+    view = _view(request)
+    poll_interval = request.app[POLL_INTERVAL_KEY]
+    ws = web.WebSocketResponse(autoping=True)
+    await ws.prepare(request)
+
+    try:
+        cursor = _subscription_cursor(request, view.last_seq())
+        while not ws.closed:
+            cursor = await _send_events_after(ws, view, cursor)
+            if not await _wait_for_poll_or_close(ws, poll_interval):
+                break
+    except RepoViewError as exc:
+        await ws.send_bytes(encode_error_frame(exc.name, str(exc)))
+    except OriginError as exc:
+        await ws.send_bytes(encode_error_frame("OriginUnavailable", str(exc)))
+    except (ConnectionResetError, asyncio.CancelledError):
+        pass
+    finally:
+        await ws.close()
+    return ws
 
 
 def get_latest_commit(view: StaticRepoView, request: web.Request) -> web.Response:
@@ -128,6 +161,49 @@ def _required_query(request: web.Request, name: str) -> str:
     return value
 
 
+def _subscription_cursor(request: web.Request, last_seq: int) -> int:
+    raw = request.query.get("cursor")
+    if raw is None:
+        return last_seq
+
+    try:
+        cursor = int(raw)
+    except ValueError as exc:
+        raise RepoViewError("cursor must be an integer") from exc
+
+    if cursor > last_seq:
+        raise RepoViewError(
+            "Cursor in the future.",
+            name="FutureCursor",
+        )
+    return cursor
+
+
+async def _send_events_after(
+    ws: web.WebSocketResponse,
+    view: StaticRepoView,
+    cursor: int,
+) -> int:
+    for event in view.events_after(cursor):
+        await ws.send_bytes(encode_message_frame(event, view))
+        cursor = max(cursor, int(event["seq"]))
+    return cursor
+
+
+async def _wait_for_poll_or_close(ws: web.WebSocketResponse, poll_interval: float) -> bool:
+    try:
+        message = await asyncio.wait_for(ws.receive(), timeout=poll_interval)
+    except TimeoutError:
+        return True
+
+    return message.type not in {
+        web.WSMsgType.CLOSE,
+        web.WSMsgType.CLOSING,
+        web.WSMsgType.CLOSED,
+        web.WSMsgType.ERROR,
+    }
+
+
 def _xrpc_error(name: str, message: str, *, status: int) -> web.Response:
     return web.json_response({"error": name, "message": message}, status=status)
 
@@ -142,10 +218,20 @@ def main(argv: list[str] | None = None) -> int:
         default="did:web:localhost",
         help="service DID reported by com.atproto.server.describeServer",
     )
+    parser.add_argument(
+        "--poll-interval",
+        type=float,
+        default=2.0,
+        help="seconds between static-origin manifest polls for subscribeRepos",
+    )
     args = parser.parse_args(argv)
 
     web.run_app(
-        create_app(origin=args.origin, service_did=args.service_did),
+        create_app(
+            origin=args.origin,
+            service_did=args.service_did,
+            poll_interval=args.poll_interval,
+        ),
         host=args.host,
         port=args.port,
     )

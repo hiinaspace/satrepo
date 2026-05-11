@@ -191,16 +191,27 @@ def _verify_commit_event(
     if commit_decoded.get("rev") != event.get("rev"):
         result.errors.append(f"commit rev does not match event rev for seq {event['seq']}")
 
-    if since := event.get("since"):
-        prev = storage.read(since)
+    prev_cid = commit_decoded.get("prev")
+    since = event.get("since")
+    if prev_cid:
+        prev = storage.read(prev_cid)
         if not prev:
-            result.errors.append(f"previous commit {since} is missing for seq {event['seq']}")
-        elif event.get("prevData") != str(prev.decoded.get("data")):
-            result.errors.append(
-                f"prevData does not match previous commit data for seq {event['seq']}"
-            )
-    elif "prevData" in event:
-        result.errors.append(f"initial commit event has unexpected prevData for seq {event['seq']}")
+            result.errors.append(f"previous commit {prev_cid} is missing for seq {event['seq']}")
+        else:
+            expected_since = prev.decoded.get("rev")
+            legacy_since = str(prev.cid)
+            if since not in {expected_since, legacy_since}:
+                result.errors.append(
+                    f"commit since does not match previous rev for seq {event['seq']}"
+                )
+            if event.get("prevData") != str(prev.decoded.get("data")):
+                result.errors.append(
+                    f"prevData does not match previous commit data for seq {event['seq']}"
+                )
+    elif since or "prevData" in event:
+        result.errors.append(
+            f"initial commit event has unexpected previous state for seq {event['seq']}"
+        )
 
     for op in event.get("ops", []):
         path = op.get("path")

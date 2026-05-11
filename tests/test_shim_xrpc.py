@@ -1,6 +1,9 @@
 import asyncio
+import io
 import json
 
+import dag_cbor
+from aiohttp import WSMsgType
 from aiohttp.test_utils import TestClient, TestServer
 from carbox.car import read_car
 
@@ -135,10 +138,120 @@ def test_shim_returns_xrpc_error_for_unknown_repo(tmp_path, monkeypatch):
     asyncio.run(scenario())
 
 
+def test_shim_subscribe_repos_backfills_static_events(tmp_path, monkeypatch):
+    root, _ = _create_committed_repo(tmp_path, monkeypatch)
+    paths = repo_paths(root)
+    manifest = read_manifest(paths.site_manifest)
+
+    async def scenario() -> None:
+        client = TestClient(TestServer(create_app(origin=str(paths.site), poll_interval=0.05)))
+        await client.start_server()
+        try:
+            ws = await client.ws_connect("/xrpc/com.atproto.sync.subscribeRepos?cursor=0")
+            frames = [await _receive_frame(ws) for _ in range(manifest["lastSeq"])]
+            await ws.close()
+
+            assert [header["t"] for header, _ in frames] == [
+                event["type"] for event in manifest["events"]
+            ]
+            assert [body["seq"] for _, body in frames] == list(range(1, manifest["lastSeq"] + 1))
+
+            first_commit = frames[0][1]
+            latest_commit = frames[-1][1]
+            assert first_commit["repo"] == manifest["did"]
+            assert first_commit["since"] is None
+            assert latest_commit["repo"] == manifest["did"]
+            assert latest_commit["since"] == first_commit["rev"]
+            assert latest_commit["rebase"] is False
+            assert latest_commit["tooBig"] is False
+            assert latest_commit["ops"][0]["action"] == "create"
+            assert latest_commit["ops"][0]["path"].startswith("app.bsky.feed.post/")
+
+            roots, blocks = read_car(latest_commit["blocks"])
+            assert str(roots[0]) == str(latest_commit["commit"])
+            assert blocks
+
+            identity = frames[1][1]
+            account = frames[2][1]
+            sync = frames[3][1]
+            assert identity["did"] == manifest["did"]
+            assert "repo" not in identity
+            assert account["did"] == manifest["did"]
+            assert "repo" not in account
+            assert sync["did"] == manifest["did"]
+            sync_roots, sync_blocks = read_car(sync["blocks"])
+            assert str(sync_roots[0]) == str(first_commit["commit"])
+            assert sync_blocks
+        finally:
+            await client.close()
+
+    asyncio.run(scenario())
+
+
+def test_shim_subscribe_repos_polls_new_static_events(tmp_path, monkeypatch):
+    root, _ = _create_committed_repo(tmp_path, monkeypatch)
+    paths = repo_paths(root)
+    before = read_manifest(paths.site_manifest)
+
+    async def scenario() -> None:
+        client = TestClient(TestServer(create_app(origin=str(paths.site), poll_interval=0.05)))
+        await client.start_server()
+        try:
+            ws = await client.ws_connect("/xrpc/com.atproto.sync.subscribeRepos")
+            assert (
+                await asyncio.to_thread(
+                    main,
+                    [
+                        "bsky",
+                        "post",
+                        "hello from polling",
+                        "--created-at",
+                        "2026-05-11T23:01:00Z",
+                        "--root",
+                        str(root),
+                    ],
+                )
+                == 0
+            )
+            assert await asyncio.to_thread(main, ["commit", "--root", str(root)]) == 0
+
+            header, body = await _receive_frame(ws)
+            await ws.close()
+
+            after = read_manifest(paths.site_manifest)
+            assert header == {"op": 1, "t": "#commit"}
+            assert body["seq"] == after["lastSeq"]
+            assert body["repo"] == after["did"]
+            assert body["rev"] == after["head"]["rev"]
+            assert body["since"] == before["head"]["rev"]
+            assert body["ops"][0]["action"] == "create"
+            assert body["ops"][0]["path"].startswith("app.bsky.feed.post/")
+            roots, blocks = read_car(body["blocks"])
+            assert str(roots[0]) == after["head"]["cid"]
+            assert blocks
+        finally:
+            await client.close()
+
+    asyncio.run(scenario())
+
+
 async def _get_json(client: TestClient, path: str, **params):
     response = await client.get(path, params=params)
     assert response.status == 200
     return await response.json()
+
+
+async def _receive_frame(ws):
+    message = await ws.receive(timeout=2)
+    assert message.type == WSMsgType.BINARY
+    return _decode_frame(message.data)
+
+
+def _decode_frame(data: bytes):
+    stream = io.BytesIO(data)
+    header = dag_cbor.decode(stream, allow_concat=True)
+    body = dag_cbor.decode(stream, allow_concat=True)
+    return header, body
 
 
 def _create_committed_repo(tmp_path, monkeypatch):

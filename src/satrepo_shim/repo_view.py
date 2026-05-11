@@ -53,6 +53,18 @@ class StaticRepoView:
     def manifest(self) -> dict[str, Any]:
         return self.origin.read_json("repo/manifest.json")
 
+    def last_seq(self) -> int:
+        return int(self.manifest().get("lastSeq", 0))
+
+    def events_after(self, cursor: int) -> list[dict[str, Any]]:
+        manifest = self.manifest()
+        events = []
+        for entry in manifest.get("events", []):
+            seq = int(entry.get("seq", 0))
+            if seq > cursor:
+                events.append(self.origin.read_json(entry["path"]))
+        return sorted(events, key=lambda event: int(event["seq"]))
+
     def did_doc(self) -> dict[str, Any]:
         return self.origin.read_json("did.json")
 
