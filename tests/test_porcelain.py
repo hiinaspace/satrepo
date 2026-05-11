@@ -2,14 +2,16 @@ import json
 
 from satrepo.cli import main
 
-
 POST_TID = "3jzfcijpj2z2a"
 
 
 def test_status_reports_dirty_worktree(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
     root = tmp_path / "repo"
-    assert main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)]) == 0
+    assert (
+        main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)])
+        == 0
+    )
     capsys.readouterr()
 
     assert main(["status", "--root", str(root)]) == 0
@@ -38,7 +40,10 @@ def test_status_reports_dirty_worktree(tmp_path, monkeypatch, capsys):
 def test_commit_alias_and_log_show_commit_summary(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
     root = tmp_path / "repo"
-    assert main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)]) == 0
+    assert (
+        main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)])
+        == 0
+    )
 
     post_dir = root / "worktree" / "app.bsky.feed.post"
     post_dir.mkdir(parents=True, exist_ok=True)

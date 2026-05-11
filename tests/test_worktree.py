@@ -5,7 +5,6 @@ import pytest
 from satrepo.errors import SatRepoError
 from satrepo.worktree import scan_records
 
-
 POST_TID = "3jzfcijpj2z2a"
 
 

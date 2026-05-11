@@ -1,0 +1,36 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types_or: [python, pyi]
+
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi]
+
+      - id: ty-check
+        name: ty check
+        entry: uv run ty check src tests
+        language: system
+        pass_filenames: false
+
+      - id: uv-lock-check
+        name: uv lock check
+        entry: uv lock --check
+        language: system
+        pass_filenames: false

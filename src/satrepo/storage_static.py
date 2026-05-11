@@ -2,21 +2,21 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
+import dag_json
+from arroba.mst import MST
 from arroba.storage import (
+    SUBSCRIBE_REPOS_NSID,
     Action,
     Block,
     CommitData,
     Sequences,
     Storage,
-    SUBSCRIBE_REPOS_NSID,
 )
-from arroba.mst import MST
 from carbox import car
-import dag_json
 from multiformats import CID
 
 from .config import RepoConfig
@@ -30,7 +30,7 @@ class BlockMeta:
     repo: str
 
     @classmethod
-    def from_dict(cls, data: dict) -> "BlockMeta":
+    def from_dict(cls, data: dict) -> BlockMeta:
         return cls(seq=data["seq"], repo=data["repo"])
 
     def to_dict(self) -> dict:
@@ -128,7 +128,7 @@ class StaticStorage(Storage):
             repo=meta.get("repo"),
         )
 
-    def read_many(self, cids):
+    def read_many(self, cids, require_all=True):
         return {cid: self.read(cid) for cid in cids}
 
     def read_many_raw(self, cids):
@@ -260,8 +260,12 @@ class StaticStorage(Storage):
     def _store_block(self, block: Block) -> None:
         cid_text = str(block.cid)
         if cid_text not in self._index:
+            seq = block.seq
+            repo = block.repo
+            if not isinstance(seq, int) or not isinstance(repo, str):
+                raise ValueError(f"block {cid_text} is missing seq/repo metadata")
             write_bytes_atomic(self._block_path(block.cid), block.encoded)
-            self._index[cid_text] = BlockMeta(seq=block.seq, repo=block.repo).to_dict()
+            self._index[cid_text] = BlockMeta(seq=seq, repo=repo).to_dict()
             self._write_index()
 
     def _block_path(self, cid: CID) -> Path:

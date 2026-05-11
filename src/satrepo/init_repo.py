@@ -12,7 +12,6 @@ from .keys import generate_key, write_private_key
 from .manifest import initial_manifest, write_manifest
 from .paths import RepoPaths, key_dir_for_did, repo_paths
 
-
 STATE_SUBDIRS = (
     "refs",
     "events",

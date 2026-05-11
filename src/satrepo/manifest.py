@@ -8,7 +8,6 @@ from typing import Any
 from .config import RepoConfig
 from .jsonio import read_json, write_json_atomic
 
-
 MANIFEST_VERSION = 1
 
 

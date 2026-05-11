@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+# ruff: noqa: I001
+# Arroba 2.0 requires storage to be imported before repo.
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -154,6 +156,7 @@ def diff_writes(repo: Repo | None, records: list[WorktreeRecord]) -> list[Write]
                 action=Action.DELETE,
                 collection=collection,
                 rkey=rkey,
+                record=None,
             )
         )
 

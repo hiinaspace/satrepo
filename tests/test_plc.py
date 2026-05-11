@@ -6,14 +6,16 @@ from satrepo.manifest import read_manifest
 from satrepo.paths import repo_paths
 from satrepo.verify import verify_repo
 
-
 POST_TID = "3jzfcijpj2z2a"
 
 
 def test_plc_update_rewrites_unregistered_repo_and_republishes(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
     root = tmp_path / "repo"
-    assert main(["init", "alice.example", "--pds-url", "https://old.example", "--root", str(root)]) == 0
+    assert (
+        main(["init", "alice.example", "--pds-url", "https://old.example", "--root", str(root)])
+        == 0
+    )
 
     post_dir = root / "worktree" / "app.bsky.feed.post"
     post_dir.mkdir(parents=True, exist_ok=True)

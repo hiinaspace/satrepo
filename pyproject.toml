@@ -20,13 +20,20 @@ satrepo-shim = "satrepo_shim.server:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.uv.sources]
-arroba = { path = "../../lib/arroba", editable = true }
-
 [dependency-groups]
 dev = [
+    "pre-commit>=4.6.0",
     "pytest>=9.0.3",
+    "ruff>=0.15.12",
+    "ty>=0.0.35",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

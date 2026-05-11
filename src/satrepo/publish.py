@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
-import shutil
 
 from .config import RepoConfig, read_config
 from .jsonio import read_json

@@ -11,7 +11,10 @@ def test_init_creates_local_and_static_layout(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
     root = tmp_path / "repo"
 
-    assert main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)]) == 0
+    assert (
+        main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)])
+        == 0
+    )
 
     paths = repo_paths(root)
     config = read_config(paths.config)
@@ -26,7 +29,9 @@ def test_init_creates_local_and_static_layout(tmp_path, monkeypatch):
     assert (paths.worktree / "app.bsky.actor.profile").is_dir()
     assert (paths.worktree / "app.bsky.feed.post").is_dir()
     assert (paths.state / "refs" / "did").read_text(encoding="utf-8").strip() == config.did
-    assert (paths.site / ".well-known" / "atproto-did").read_text(encoding="utf-8").strip() == config.did
+    assert (paths.site / ".well-known" / "atproto-did").read_text(
+        encoding="utf-8"
+    ).strip() == config.did
     assert json.loads((paths.state / "did.json").read_text(encoding="utf-8"))["id"] == config.did
 
     assert manifest == read_manifest(paths.local_manifest)
@@ -47,7 +52,10 @@ def test_init_refuses_existing_repo(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
     root = tmp_path / "repo"
 
-    assert main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)]) == 0
+    assert (
+        main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)])
+        == 0
+    )
 
     try:
         main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)])
@@ -61,7 +69,10 @@ def test_status_reports_initialized_repo(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
     root = tmp_path / "repo"
 
-    assert main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)]) == 0
+    assert (
+        main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)])
+        == 0
+    )
     assert main(["status", "--root", str(root)]) == 0
 
     out = capsys.readouterr().out

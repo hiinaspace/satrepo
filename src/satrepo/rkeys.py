@@ -6,7 +6,6 @@ import re
 
 from .errors import SatRepoError
 
-
 RECORD_KEY_RE = re.compile(r"^[a-zA-Z0-9_~.:-]{1,512}$")
 RECORD_KEY_INVALID_VALUES = {".", ".."}
 TID_RE = re.compile(r"^[234567abcdefghij][234567abcdefghijklmnopqrstuvwxyz]{12}$")
@@ -45,7 +44,9 @@ def validate_rkey(collection: str, rkey: str) -> None:
     if constraint.startswith("literal:"):
         expected = constraint.removeprefix("literal:")
         if rkey != expected:
-            raise SatRepoError(f"{collection}/{rkey} is invalid: {collection} requires rkey {expected!r}")
+            raise SatRepoError(
+                f"{collection}/{rkey} is invalid: {collection} requires rkey {expected!r}"
+            )
 
 
 def suggested_rkey(collection: str) -> str | None:

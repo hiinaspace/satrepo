@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Annotated
 
 import click
@@ -15,7 +15,6 @@ from .plc import plc_summary, update_pds_url
 from .porcelain import commit_log, worktree_status
 from .publish import publish
 from .verify import format_result, verify_repo
-
 
 app = typer.Typer(help="Local static ATProto repo authoring tools.")
 plc_app = typer.Typer(help="Manage local did:plc state.")
@@ -30,7 +29,9 @@ def init_command(
     handle: Annotated[str, typer.Argument(help="ATProto handle for the repo.")],
     pds_url: Annotated[str, typer.Option("--pds-url", help="Future shim/PDS service URL.")],
     root: RootOption = Path("."),
-    force: Annotated[bool, typer.Option("--force", help="Overwrite existing config and keys.")] = False,
+    force: Annotated[
+        bool, typer.Option("--force", help="Overwrite existing config and keys.")
+    ] = False,
 ) -> None:
     config = init_repo(root, handle=handle, pds_url=pds_url, force=force)
     typer.echo(f"initialized satrepo at {root.resolve()}")
@@ -62,7 +63,9 @@ def status_command(root: RootOption = Path(".")) -> None:
 @app.command("log")
 def log_command(
     root: RootOption = Path("."),
-    limit: Annotated[int | None, typer.Option("--limit", "-n", min=1, help="Maximum commits to show.")] = None,
+    limit: Annotated[
+        int | None, typer.Option("--limit", "-n", min=1, help="Maximum commits to show.")
+    ] = None,
 ) -> None:
     entries = commit_log(root, limit=limit)
     if not entries:
@@ -113,7 +116,9 @@ def plc_update(
     root: RootOption = Path("."),
     no_publish: Annotated[
         bool,
-        typer.Option("--no-publish", help="Only update DID metadata, leaving repo artifacts unpublished."),
+        typer.Option(
+            "--no-publish", help="Only update DID metadata, leaving repo artifacts unpublished."
+        ),
     ] = False,
 ) -> None:
     result = update_pds_url(root, pds_url=pds_url, publish_after=not no_publish)

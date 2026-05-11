@@ -11,11 +11,11 @@ import base64
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
+import dag_cbor
 from arroba import did as arroba_did
 from arroba import util
-import dag_cbor
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.hashes import Hash, SHA256
+from cryptography.hazmat.primitives.hashes import SHA256, Hash
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,9 @@ def normalize_pds_url(pds_url: str) -> str:
     pds_url = pds_url.strip().rstrip("/")
     parsed = urlparse(pds_url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        raise ValueError("PDS URL must be an absolute http(s) URL, for example https://shim.example")
+        raise ValueError(
+            "PDS URL must be an absolute http(s) URL, for example https://shim.example"
+        )
     return pds_url
 
 

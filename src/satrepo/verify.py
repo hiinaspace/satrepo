@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+# ruff: noqa: I001
+# Arroba 2.0 requires storage to be imported before repo.
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from arroba.storage import Block, MemoryStorage
-from arroba.repo import Repo
 from arroba import did as arroba_did
 from arroba import util
+from arroba.storage import Block, MemoryStorage
+from arroba.repo import Repo
 from carbox.car import read_car
 
 from .config import read_config
@@ -61,12 +63,13 @@ def verify_repo(root: Path | str | None = None) -> VerificationResult:
         rotation_key=read_private_key(config.key_dir / "rotation.key"),
     )
     repo = storage.load_repo(config.did)
-    if not repo:
+    if not repo or not repo.head:
         result.errors.append("repo cannot be loaded from .satrepo blocks")
         return result
 
-    result.head = str(repo.head.cid)
-    result.rev = repo.head.decoded["rev"]
+    head_block = repo.head
+    result.head = str(head_block.cid)
+    result.rev = head_block.decoded["rev"]
     result.record_count = sum(len(by_rkey) for by_rkey in repo.get_contents().values())
 
     _verify_head(result, repo, manifest, signing_key)
@@ -85,20 +88,30 @@ def _load_manifest_pair(paths, result: VerificationResult) -> dict:
 
 
 def _verify_head(result: VerificationResult, repo: Repo, manifest: dict, signing_key) -> None:
+    head_block = repo.head
+    if not head_block:
+        result.errors.append("loaded repo has no head")
+        return
+
     head = manifest.get("head")
     if not head:
         result.errors.append("manifest has no head")
         return
 
-    if head.get("cid") != str(repo.head.cid):
+    if head.get("cid") != str(head_block.cid):
         result.errors.append("manifest head CID does not match loaded repo head")
-    if head.get("rev") != repo.head.decoded["rev"]:
+    if head.get("rev") != head_block.decoded["rev"]:
         result.errors.append("manifest head rev does not match loaded repo rev")
-    if signing_key and not util.verify_sig(repo.head.decoded, signing_key):
+    if signing_key and not util.verify_sig(head_block.decoded, signing_key):
         result.errors.append("repo head signature does not verify against DID document")
 
 
 def _verify_snapshot(result: VerificationResult, paths, repo: Repo) -> None:
+    head_block = repo.head
+    if not head_block:
+        result.errors.append("loaded repo has no head")
+        return
+
     snapshot_path = paths.site / "repo" / "snapshot.car"
     if not snapshot_path.exists():
         result.errors.append("site snapshot.car is missing")
@@ -109,20 +122,21 @@ def _verify_snapshot(result: VerificationResult, paths, repo: Repo) -> None:
     if not roots:
         result.errors.append("snapshot.car has no root")
         return
-    if str(roots[0]) != str(repo.head.cid):
+    if str(roots[0]) != str(head_block.cid):
         result.errors.append("snapshot.car root does not match repo head")
 
     memory = MemoryStorage()
     memory.write_blocks(
-        Block(cid=block.cid, encoded=block.data, repo=repo.did, seq=0)
-        for block in blocks
+        Block(cid=block.cid, encoded=block.data, repo=repo.did, seq=0) for block in blocks
     )
-    snapshot_repo = Repo.load(memory, cid=roots[0])
+    snapshot_repo = Repo.load(memory, cid=roots[0], signing_key=repo.signing_key)
     if snapshot_repo.get_contents() != repo.get_contents():
         result.errors.append("snapshot.car contents do not match local repo contents")
 
 
-def _verify_events(result: VerificationResult, paths, manifest: dict, signing_key, storage: StaticStorage) -> None:
+def _verify_events(
+    result: VerificationResult, paths, manifest: dict, signing_key, storage: StaticStorage
+) -> None:
     expected_seq = 1
     manifest_events = manifest.get("events", [])
     if manifest.get("lastSeq") != len(manifest_events):
@@ -147,7 +161,9 @@ def _verify_events(result: VerificationResult, paths, manifest: dict, signing_ke
             _verify_commit_event(result, paths, event, signing_key, storage)
 
 
-def _verify_commit_event(result: VerificationResult, paths, event: dict, signing_key, storage: StaticStorage) -> None:
+def _verify_commit_event(
+    result: VerificationResult, paths, event: dict, signing_key, storage: StaticStorage
+) -> None:
     blocks_path = paths.site / event["blocks"]
     if not blocks_path.exists():
         result.errors.append(f"commit CAR is missing: {event['blocks']}")
@@ -161,12 +177,18 @@ def _verify_commit_event(result: VerificationResult, paths, event: dict, signing
 
     commit_block = block_by_cid.get(event["commit"])
     if not commit_block:
-        result.errors.append(f"commit CAR does not contain root commit block for seq {event['seq']}")
+        result.errors.append(
+            f"commit CAR does not contain root commit block for seq {event['seq']}"
+        )
+        return
+    commit_decoded = commit_block.decoded
+    if not isinstance(commit_decoded, dict):
+        result.errors.append(f"commit block is not an object for seq {event['seq']}")
         return
 
-    if signing_key and not util.verify_sig(commit_block.decoded, signing_key):
+    if signing_key and not util.verify_sig(commit_decoded, signing_key):
         result.errors.append(f"commit signature does not verify for seq {event['seq']}")
-    if commit_block.decoded.get("rev") != event.get("rev"):
+    if commit_decoded.get("rev") != event.get("rev"):
         result.errors.append(f"commit rev does not match event rev for seq {event['seq']}")
 
     if since := event.get("since"):
@@ -174,7 +196,9 @@ def _verify_commit_event(result: VerificationResult, paths, event: dict, signing
         if not prev:
             result.errors.append(f"previous commit {since} is missing for seq {event['seq']}")
         elif event.get("prevData") != str(prev.decoded.get("data")):
-            result.errors.append(f"prevData does not match previous commit data for seq {event['seq']}")
+            result.errors.append(
+                f"prevData does not match previous commit data for seq {event['seq']}"
+            )
     elif "prevData" in event:
         result.errors.append(f"initial commit event has unexpected prevData for seq {event['seq']}")
 

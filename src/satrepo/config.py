@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-from .jsonio import read_json, write_json_atomic
 from .did_plc import normalize_pds_url
-
+from .jsonio import read_json, write_json_atomic
 
 CONFIG_VERSION = 1
 
 
 def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
@@ -36,7 +35,7 @@ class RepoConfig:
         pds_url: str,
         key_dir: Path,
         plc_registered: bool = False,
-    ) -> "RepoConfig":
+    ) -> RepoConfig:
         return cls(
             handle=handle,
             did=did,
@@ -47,7 +46,7 @@ class RepoConfig:
         )
 
     @classmethod
-    def from_dict(cls, data: dict) -> "RepoConfig":
+    def from_dict(cls, data: dict) -> RepoConfig:
         return cls(
             version=data["version"],
             handle=data["handle"],

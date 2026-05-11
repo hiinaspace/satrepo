@@ -7,14 +7,16 @@ from satrepo.manifest import read_manifest
 from satrepo.paths import repo_paths
 from satrepo.verify import verify_repo
 
-
 POST_TID = "3jzfcijpj2z2a"
 
 
 def test_publish_creates_static_repo_artifacts(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
     root = tmp_path / "repo"
-    assert main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)]) == 0
+    assert (
+        main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)])
+        == 0
+    )
 
     post_dir = root / "worktree" / "app.bsky.feed.post"
     post_dir.mkdir(parents=True, exist_ok=True)
@@ -73,7 +75,10 @@ def test_publish_creates_static_repo_artifacts(tmp_path, monkeypatch):
 def test_publish_is_noop_without_record_changes(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
     root = tmp_path / "repo"
-    assert main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)]) == 0
+    assert (
+        main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)])
+        == 0
+    )
     assert main(["commit", "--root", str(root)]) == 0
 
     paths = repo_paths(root)
@@ -87,7 +92,10 @@ def test_publish_is_noop_without_record_changes(tmp_path, monkeypatch):
 def test_verify_warns_on_non_https_pds_url(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
     root = tmp_path / "repo"
-    assert main(["init", "alice.example", "--pds-url", "http://shim.example", "--root", str(root)]) == 0
+    assert (
+        main(["init", "alice.example", "--pds-url", "http://shim.example", "--root", str(root)])
+        == 0
+    )
     assert main(["commit", "--root", str(root)]) == 0
 
     verification = verify_repo(root)
@@ -99,7 +107,10 @@ def test_verify_warns_on_non_https_pds_url(tmp_path, monkeypatch):
 def test_verify_reports_invalid_committed_bsky_rkey(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
     root = tmp_path / "repo"
-    assert main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)]) == 0
+    assert (
+        main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)])
+        == 0
+    )
 
     post_dir = root / "worktree" / "app.bsky.feed.post"
     post_dir.mkdir(parents=True, exist_ok=True)
