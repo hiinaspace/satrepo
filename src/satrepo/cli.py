@@ -11,6 +11,7 @@ from .errors import SatRepoError
 from .init_repo import init_repo
 from .paths import discover_root
 from .publish import publish
+from .verify import format_result, verify_repo
 from .worktree import scan_records
 
 
@@ -32,6 +33,10 @@ def build_parser() -> argparse.ArgumentParser:
     publish_parser = subparsers.add_parser("publish", help="publish worktree records to site/")
     publish_parser.add_argument("--root", type=Path, default=Path("."), help="checkout root")
     publish_parser.set_defaults(func=_cmd_publish)
+
+    verify_parser = subparsers.add_parser("verify", help="verify generated repo artifacts")
+    verify_parser.add_argument("--root", type=Path, default=Path("."), help="checkout root")
+    verify_parser.set_defaults(func=_cmd_verify)
 
     return parser
 
@@ -78,6 +83,12 @@ def _cmd_publish(args: argparse.Namespace) -> int:
     print(f"writes: {result.writes}")
     print(f"events: {result.events}")
     return 0
+
+
+def _cmd_verify(args: argparse.Namespace) -> int:
+    result = verify_repo(args.root)
+    print(format_result(result))
+    return 0 if result.ok else 1
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from carbox.car import read_car
 from satrepo.cli import main
 from satrepo.manifest import read_manifest
 from satrepo.paths import repo_paths
+from satrepo.verify import verify_repo
 
 
 def test_publish_creates_static_repo_artifacts(tmp_path, monkeypatch):
@@ -59,6 +60,12 @@ def test_publish_creates_static_repo_artifacts(tmp_path, monkeypatch):
     assert str(roots[0]) == manifest["head"]["cid"]
     assert blocks
 
+    verification = verify_repo(root)
+    assert verification.ok
+    assert verification.record_count == 1
+    assert verification.event_count == 5
+    assert verification.snapshot_block_count == len(blocks)
+
 
 def test_publish_is_noop_without_record_changes(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
@@ -72,3 +79,15 @@ def test_publish_is_noop_without_record_changes(tmp_path, monkeypatch):
     second = read_manifest(paths.site_manifest)
 
     assert second == first
+
+
+def test_verify_warns_on_non_https_pds_url(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
+    root = tmp_path / "repo"
+    assert main(["init", "alice.example", "--pds-url", "shim.example", "--root", str(root)]) == 0
+    assert main(["publish", "--root", str(root)]) == 0
+
+    verification = verify_repo(root)
+
+    assert verification.ok
+    assert verification.warnings == ["pdsUrl is not an absolute https URL"]
