@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "arroba",
+    "typer>=0.25.1",
 ]
 
 [project.scripts]

@@ -6,16 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 import shutil
 
-from arroba.storage import Action
-from arroba.repo import Repo, Write
-
 from .config import RepoConfig, read_config
 from .jsonio import read_json
-from .keys import read_private_key
 from .manifest import write_manifest
 from .paths import RepoPaths, discover_root
-from .storage_static import StaticStorage
-from .worktree import WorktreeRecord, scan_records
+from .porcelain import diff_writes, load_storage
+from .worktree import scan_records
 
 
 @dataclass(frozen=True)
@@ -29,9 +25,11 @@ class PublishResult:
 
 
 def publish(root: Path | str | None = None) -> PublishResult:
+    from arroba.repo import Repo
+
     paths = discover_root(root)
     config = read_config(paths.config)
-    storage = _load_storage(paths, config)
+    storage = load_storage(paths, config)
 
     repo = storage.load_repo(config.did)
     if repo is None:
@@ -43,7 +41,7 @@ def publish(root: Path | str | None = None) -> PublishResult:
             handle=config.handle,
         )
 
-    writes = _diff_records(repo, scan_records(paths.root))
+    writes = diff_writes(repo, scan_records(paths.root))
     if writes:
         storage.commit(repo, writes)
 
@@ -117,57 +115,6 @@ def publish_static(paths: RepoPaths, config: RepoConfig, manifest: dict) -> None
     _copy_if_exists(paths.state / "snapshot.car", paths.site / "repo" / "snapshot.car")
 
     write_manifest(paths.site_manifest, manifest)
-
-
-def _load_storage(paths: RepoPaths, config: RepoConfig) -> StaticStorage:
-    signing_key = read_private_key(config.key_dir / "signing.key")
-    rotation_key = read_private_key(config.key_dir / "rotation.key")
-    return StaticStorage(
-        paths=paths,
-        config=config,
-        signing_key=signing_key,
-        rotation_key=rotation_key,
-    )
-
-
-def _diff_records(repo: Repo, records: list[WorktreeRecord]) -> list[Write]:
-    current = {
-        f"{collection}/{rkey}": record
-        for collection, by_rkey in repo.get_contents().items()
-        for rkey, record in by_rkey.items()
-    }
-    desired = {record.repo_path: record for record in records}
-
-    writes = []
-    for repo_path, record in sorted(desired.items()):
-        collection, rkey = repo_path.split("/", 1)
-        if repo_path not in current:
-            action = Action.CREATE
-        elif current[repo_path] != record.record:
-            action = Action.UPDATE
-        else:
-            continue
-
-        writes.append(
-            Write(
-                action=action,
-                collection=collection,
-                rkey=rkey,
-                record=record.record,
-            )
-        )
-
-    for repo_path in sorted(set(current) - set(desired)):
-        collection, rkey = repo_path.split("/", 1)
-        writes.append(
-            Write(
-                action=Action.DELETE,
-                collection=collection,
-                rkey=rkey,
-            )
-        )
-
-    return writes
 
 
 def _copy_tree_files(src: Path, dest: Path) -> None:
