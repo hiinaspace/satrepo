@@ -11,13 +11,21 @@ from urllib.parse import urlsplit, urlunsplit
 
 from .config import RepoConfig
 from .jsonio import read_json, write_json_atomic
+from .keys import read_private_key
 from .paths import RepoPaths
 from .standard_site import DOCUMENT_COLLECTION, MARKDOWN_TYPE, PUBLICATION_COLLECTION
-from .worktree import WorktreeRecord, scan_records
+from .storage_static import StaticStorage
 
 PUBLIC_DIR_MODE = 0o755
 PUBLIC_FILE_MODE = 0o644
 GENERATED_REGISTRY = "standard_site_generated.json"
+
+
+@dataclass(frozen=True)
+class RepoRecord:
+    collection: str
+    rkey: str
+    record: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -40,9 +48,9 @@ class Document:
 
 
 def render_standard_site(paths: RepoPaths, config: RepoConfig) -> None:
-    """Render committed Standard.site worktree records into site/."""
+    """Render committed Standard.site records into site/."""
 
-    records = scan_records(paths.root)
+    records = _committed_records(paths, config)
     publications = _publications(config, records)
     documents = _documents(config, records, publications)
 
@@ -60,7 +68,27 @@ def render_standard_site(paths: RepoPaths, config: RepoConfig) -> None:
     write_json_atomic(paths.state / GENERATED_REGISTRY, sorted(generated_paths))
 
 
-def _publications(config: RepoConfig, records: list[WorktreeRecord]) -> dict[str, Publication]:
+def _committed_records(paths: RepoPaths, config: RepoConfig) -> list[RepoRecord]:
+    signing_key = read_private_key(config.key_dir / "signing.key")
+    rotation_key = read_private_key(config.key_dir / "rotation.key")
+    storage = StaticStorage(
+        paths=paths,
+        config=config,
+        signing_key=signing_key,
+        rotation_key=rotation_key,
+    )
+    repo = storage.load_repo(config.did)
+    if repo is None:
+        return []
+
+    return [
+        RepoRecord(collection=collection, rkey=rkey, record=record)
+        for collection, records in sorted(repo.get_contents().items())
+        for rkey, record in sorted(records.items())
+    ]
+
+
+def _publications(config: RepoConfig, records: list[RepoRecord]) -> dict[str, Publication]:
     publications: dict[str, Publication] = {}
     for item in records:
         if item.collection != PUBLICATION_COLLECTION:
@@ -82,7 +110,7 @@ def _publications(config: RepoConfig, records: list[WorktreeRecord]) -> dict[str
 
 def _documents(
     config: RepoConfig,
-    records: list[WorktreeRecord],
+    records: list[RepoRecord],
     publications: dict[str, Publication],
 ) -> list[Document]:
     documents: list[Document] = []

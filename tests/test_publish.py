@@ -78,6 +78,56 @@ def test_publish_creates_static_repo_artifacts(tmp_path, monkeypatch):
     assert verification.snapshot_block_count == len(blocks)
 
 
+def test_publish_commits_update_and_delete_ops(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
+    root = tmp_path / "repo"
+    assert (
+        main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)])
+        == 0
+    )
+
+    post_path = root / "worktree" / "app.bsky.feed.post" / f"{POST_TID}.json"
+    post_path.write_text(
+        json.dumps(
+            {
+                "$type": "app.bsky.feed.post",
+                "text": "first version",
+                "createdAt": "2026-05-11T18:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert main(["commit", "--root", str(root)]) == 0
+
+    post_path.write_text(
+        json.dumps(
+            {
+                "$type": "app.bsky.feed.post",
+                "text": "edited version",
+                "createdAt": "2026-05-11T18:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert main(["commit", "--root", str(root)]) == 0
+    update_event = _latest_commit_event(repo_paths(root))
+    assert update_event["ops"][0]["action"] == "update"
+    assert update_event["ops"][0]["path"] == f"app.bsky.feed.post/{POST_TID}"
+    assert update_event["ops"][0]["cid"]
+    assert update_event["ops"][0]["prev"]
+
+    post_path.unlink()
+    assert main(["commit", "--root", str(root)]) == 0
+    delete_event = _latest_commit_event(repo_paths(root))
+    assert delete_event["ops"][0]["action"] == "delete"
+    assert delete_event["ops"][0]["path"] == f"app.bsky.feed.post/{POST_TID}"
+    assert delete_event["ops"][0]["prev"]
+
+    verification = verify_repo(root)
+    assert verification.ok
+    assert verification.record_count == 0
+
+
 def test_publish_is_noop_without_record_changes(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
     root = tmp_path / "repo"
@@ -143,3 +193,9 @@ def test_verify_reports_invalid_committed_bsky_rkey(tmp_path, monkeypatch):
     assert not verification.ok
     assert any("requires a TID rkey" in error for error in verification.errors)
     assert main(["verify", "--root", str(root)]) == 1
+
+
+def _latest_commit_event(paths):
+    manifest = read_manifest(paths.site_manifest)
+    latest = next(event for event in reversed(manifest["events"]) if event["type"] == "#commit")
+    return read_manifest(paths.site / latest["path"])

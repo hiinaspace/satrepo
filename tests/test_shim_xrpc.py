@@ -180,6 +180,67 @@ def test_shim_returns_xrpc_error_for_unknown_repo(tmp_path, monkeypatch):
     asyncio.run(scenario())
 
 
+def test_shim_serves_independent_repo_instances(tmp_path, monkeypatch):
+    root_a, rkey_a = _create_committed_repo(
+        tmp_path,
+        monkeypatch,
+        root_name="repo-a",
+        handle="alice.example",
+        text="hello from repo a",
+    )
+    root_b, rkey_b = _create_committed_repo(
+        tmp_path,
+        monkeypatch,
+        root_name="repo-b",
+        handle="bob.example",
+        text="hello from repo b",
+    )
+    paths_a = repo_paths(root_a)
+    paths_b = repo_paths(root_b)
+    manifest_a = read_manifest(paths_a.site_manifest)
+    manifest_b = read_manifest(paths_b.site_manifest)
+
+    async def scenario() -> None:
+        client_a = TestClient(TestServer(create_app(origin=str(paths_a.site))))
+        client_b = TestClient(TestServer(create_app(origin=str(paths_b.site))))
+        await client_a.start_server()
+        await client_b.start_server()
+        try:
+            listed_a = await _get_json(client_a, "/xrpc/com.atproto.sync.listRepos")
+            listed_b = await _get_json(client_b, "/xrpc/com.atproto.sync.listRepos")
+            assert [repo["did"] for repo in listed_a["repos"]] == [manifest_a["did"]]
+            assert [repo["did"] for repo in listed_b["repos"]] == [manifest_b["did"]]
+
+            record_a = await _get_json(
+                client_a,
+                "/xrpc/com.atproto.repo.getRecord",
+                repo=manifest_a["handle"],
+                collection="app.bsky.feed.post",
+                rkey=rkey_a,
+            )
+            record_b = await _get_json(
+                client_b,
+                "/xrpc/com.atproto.repo.getRecord",
+                repo=manifest_b["handle"],
+                collection="app.bsky.feed.post",
+                rkey=rkey_b,
+            )
+            assert record_a["value"]["text"] == "hello from repo a"
+            assert record_b["value"]["text"] == "hello from repo b"
+
+            response = await client_a.get(
+                "/xrpc/com.atproto.sync.getLatestCommit",
+                params={"did": manifest_b["did"]},
+            )
+            assert response.status == 400
+            assert (await response.json())["error"] == "RepoNotFound"
+        finally:
+            await client_a.close()
+            await client_b.close()
+
+    asyncio.run(scenario())
+
+
 def test_shim_subscribe_repos_backfills_static_events(tmp_path, monkeypatch):
     root, _ = _create_committed_repo(tmp_path, monkeypatch)
     paths = repo_paths(root)
@@ -296,19 +357,23 @@ def _decode_frame(data: bytes):
     return header, body
 
 
-def _create_committed_repo(tmp_path, monkeypatch):
+def _create_committed_repo(
+    tmp_path,
+    monkeypatch,
+    *,
+    root_name: str = "repo",
+    handle: str = "alice.example",
+    text: str = "hello from the shim test",
+):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
-    root = tmp_path / "repo"
-    assert (
-        main(["init", "alice.example", "--pds-url", "https://shim.example", "--root", str(root)])
-        == 0
-    )
+    root = tmp_path / root_name
+    assert main(["init", handle, "--pds-url", "https://shim.example", "--root", str(root)]) == 0
     assert (
         main(
             [
                 "bsky",
                 "post",
-                "hello from the shim test",
+                text,
                 "--created-at",
                 "2026-05-11T23:00:00Z",
                 "--root",
@@ -320,8 +385,6 @@ def _create_committed_repo(tmp_path, monkeypatch):
     post_files = sorted((root / "worktree" / "app.bsky.feed.post").glob("*.json"))
     assert len(post_files) == 1
     rkey = post_files[0].stem
-    assert (
-        json.loads(post_files[0].read_text(encoding="utf-8"))["text"] == "hello from the shim test"
-    )
+    assert json.loads(post_files[0].read_text(encoding="utf-8"))["text"] == text
     assert main(["commit", "--root", str(root)]) == 0
     return root, rkey

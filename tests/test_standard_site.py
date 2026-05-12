@@ -2,7 +2,9 @@ import json
 
 from satrepo.cli import main
 from satrepo.config import read_config
+from satrepo.manifest import read_manifest
 from satrepo.paths import repo_paths
+from satrepo.publish import publish_static
 from satrepo.rkeys import is_valid_tid
 from satrepo.verify import verify_repo
 
@@ -48,9 +50,7 @@ def test_standard_site_helpers_create_publication_and_document(tmp_path, monkeyp
     }
 
     config = read_config(repo_paths(root).config)
-    assert (root / "site" / ".well-known" / "site.standard.publication").read_text(
-        encoding="utf-8"
-    ).strip() == (f"at://{config.did}/site.standard.publication/{publication_rkey}")
+    assert not (root / "site" / ".well-known" / "site.standard.publication").exists()
 
     assert (
         main(
@@ -151,7 +151,60 @@ def test_standard_site_render_removes_deleted_documents(tmp_path, monkeypatch):
     assert page.exists()
 
     document_file = next((root / "worktree" / "site.standard.document").glob("*.json"))
+    document = json.loads(document_file.read_text(encoding="utf-8"))
+    document["textContent"] = "Updated body"
+    document["content"]["text"] = "Updated body"
+    document_file.write_text(json.dumps(document), encoding="utf-8")
+    assert main(["commit", "--root", str(root)]) == 0
+    assert "<p>Updated body</p>" in page.read_text(encoding="utf-8")
+
     document_file.unlink()
     assert main(["commit", "--root", str(root)]) == 0
 
     assert not page.exists()
+
+
+def test_standard_site_render_ignores_uncommitted_worktree_records(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
+    root = tmp_path / "repo"
+    assert (
+        main(["init", "alice.example", "--pds-url", "https://alice.example", "--root", str(root)])
+        == 0
+    )
+    assert (
+        main(
+            [
+                "standard",
+                "publication",
+                "Alice Notes",
+                "--url",
+                "https://alice.example",
+                "--root",
+                str(root),
+            ]
+        )
+        == 0
+    )
+    assert main(["commit", "--root", str(root)]) == 0
+
+    assert (
+        main(
+            [
+                "standard",
+                "document",
+                "Draft",
+                "Draft body",
+                "--path",
+                "/draft",
+                "--root",
+                str(root),
+            ]
+        )
+        == 0
+    )
+
+    paths = repo_paths(root)
+    config = read_config(paths.config)
+    publish_static(paths, config, read_manifest(paths.local_manifest))
+
+    assert not (root / "site" / "draft" / "index.html").exists()

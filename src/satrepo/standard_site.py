@@ -44,7 +44,6 @@ def create_standard_publication(
         raise SatRepoError("publication URL cannot be empty")
 
     paths = discover_root(root)
-    config = read_config(paths.config)
     rkey, path = _allocate_record_path(paths.worktree / PUBLICATION_COLLECTION)
 
     record: dict[str, Any] = {
@@ -56,10 +55,6 @@ def create_standard_publication(
         record["description"] = description
 
     write_json_atomic(path, record)
-    _write_publication_well_known(
-        paths.site / ".well-known" / PUBLICATION_COLLECTION,
-        f"at://{config.did}/{PUBLICATION_COLLECTION}/{rkey}",
-    )
     return CreatedStandardRecord(collection=PUBLICATION_COLLECTION, rkey=rkey, path=path)
 
 
@@ -131,9 +126,3 @@ def _publication_uri(paths, publication_rkey: str | None) -> str:
             "expected exactly one site.standard.publication record; pass --publication-rkey"
         )
     return f"at://{config.did}/{PUBLICATION_COLLECTION}/{publications[0].stem}"
-
-
-def _write_publication_well_known(path: Path, uri: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(f"{uri}\n", encoding="utf-8")
-    path.chmod((path.stat().st_mode & 0o777) | 0o644)
