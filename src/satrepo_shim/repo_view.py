@@ -53,6 +53,9 @@ class StaticRepoView:
     def manifest(self) -> dict[str, Any]:
         return self.origin.read_json("repo/manifest.json")
 
+    def current_rev(self) -> str | None:
+        return (self.manifest().get("head") or {}).get("rev")
+
     def last_seq(self) -> int:
         return int(self.manifest().get("lastSeq", 0))
 

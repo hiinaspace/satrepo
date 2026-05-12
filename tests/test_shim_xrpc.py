@@ -75,12 +75,19 @@ def test_shim_serves_readonly_sync_xrpcs(tmp_path, monkeypatch):
             assert health["did"] == manifest["did"]
             assert health["head"] == manifest["head"]["cid"]
 
+            options_response = await client.options("/xrpc/com.atproto.sync.getRepo")
+            assert options_response.status == 204
+            assert options_response.headers["Access-Control-Allow-Origin"] == "*"
+            assert "Atproto-Repo-Rev" in options_response.headers["Access-Control-Expose-Headers"]
+
             repo_response = await client.get(
                 "/xrpc/com.atproto.sync.getRepo",
                 params={"did": manifest["did"]},
             )
             assert repo_response.status == 200
             assert repo_response.content_type == CAR_MIME_TYPE
+            assert repo_response.headers["Atproto-Repo-Rev"] == manifest["head"]["rev"]
+            assert repo_response.headers["Access-Control-Allow-Origin"] == "*"
             repo_roots, repo_blocks = read_car(await repo_response.read())
             assert str(repo_roots[0]) == manifest["head"]["cid"]
             assert repo_blocks

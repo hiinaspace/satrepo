@@ -12,7 +12,7 @@ import typer
 from .bsky import create_bsky_post
 from .errors import SatRepoError
 from .init_repo import init_repo
-from .plc import plc_summary, update_pds_url
+from .plc import plc_summary, submit_plc_operation, update_pds_url
 from .porcelain import commit_log, worktree_status
 from .publish import publish
 from .verify import format_result, verify_repo
@@ -148,6 +148,23 @@ def plc_update(
     typer.echo(f"pds_url: {result.pds_url}")
     typer.echo(f"keys: {result.key_dir}")
     typer.echo(f"published: {'yes' if result.published else 'no'}")
+
+
+@plc_app.command("submit")
+def plc_submit(
+    root: RootOption = Path("."),
+    directory: Annotated[
+        str,
+        typer.Option("--directory", help="PLC directory base URL."),
+    ] = "https://plc.directory",
+) -> None:
+    result = submit_plc_operation(root, directory=directory)
+    if result.submitted:
+        typer.echo("submitted local did:plc genesis operation")
+    elif result.already_registered:
+        typer.echo("did:plc already registered")
+    typer.echo(f"did: {result.did}")
+    typer.echo(f"directory: {result.directory}")
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from .config import read_config, write_config
 from .did_plc import build_genesis_operation, normalize_pds_url
@@ -29,6 +33,14 @@ class PlcUpdateResult:
         return self.old_did != self.new_did
 
 
+@dataclass(frozen=True)
+class PlcSubmitResult:
+    did: str
+    directory: str
+    submitted: bool
+    already_registered: bool
+
+
 def plc_summary(root: Path | str | None = None) -> dict:
     paths = discover_root(root)
     config = read_config(paths.config)
@@ -48,6 +60,47 @@ def plc_summary(root: Path | str | None = None) -> dict:
         "keyDir": config.key_dir,
         "plcRegistered": config.plc_registered,
     }
+
+
+def submit_plc_operation(
+    root: Path | str | None = None,
+    *,
+    directory: str = "https://plc.directory",
+) -> PlcSubmitResult:
+    paths = discover_root(root)
+    config = read_config(paths.config)
+    operation = read_json(paths.state / "plc_operation.json")
+    expected_did_doc = read_json(paths.state / "did.json")
+    directory = directory.rstrip("/")
+
+    if config.plc_registered:
+        _ensure_registered_doc(directory, config.did, expected_did_doc)
+        return PlcSubmitResult(
+            did=config.did,
+            directory=directory,
+            submitted=False,
+            already_registered=True,
+        )
+
+    if _did_is_registered(directory, config.did):
+        _ensure_registered_doc(directory, config.did, expected_did_doc)
+        write_config(paths.config, replace(config, plc_registered=True))
+        return PlcSubmitResult(
+            did=config.did,
+            directory=directory,
+            submitted=False,
+            already_registered=True,
+        )
+
+    _post_plc_operation(directory, config.did, _operation_for_submission(operation))
+    _ensure_registered_doc(directory, config.did, expected_did_doc)
+    write_config(paths.config, replace(config, plc_registered=True))
+    return PlcSubmitResult(
+        did=config.did,
+        directory=directory,
+        submitted=True,
+        already_registered=False,
+    )
 
 
 def update_pds_url(
@@ -180,6 +233,93 @@ def _operation_pds_url(operation: dict) -> str | None:
         return operation["services"]["atproto_pds"]["endpoint"]
     except KeyError:
         return None
+
+
+def _operation_for_submission(operation: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in operation.items() if key != "did"}
+
+
+def _did_is_registered(directory: str, did: str) -> bool:
+    try:
+        _read_plc_did_doc(directory, did)
+    except SatRepoError as exc:
+        if "DID not registered" in str(exc):
+            return False
+        raise
+    return True
+
+
+def _ensure_registered_doc(directory: str, did: str, expected_did_doc: dict[str, Any]) -> None:
+    did_doc = _read_plc_did_doc(directory, did)
+    if did_doc.get("id") != did:
+        raise SatRepoError(f"PLC directory returned a DID document for {did_doc.get('id')}")
+    _assert_matching_did_doc(did_doc, expected_did_doc)
+
+
+def _assert_matching_did_doc(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    actual_service = _atproto_service(actual)
+    expected_service = _atproto_service(expected)
+    actual_key = _atproto_verification_key(actual)
+    expected_key = _atproto_verification_key(expected)
+
+    if actual.get("alsoKnownAs") != expected.get("alsoKnownAs"):
+        raise SatRepoError("PLC directory DID document handle does not match local state")
+    if actual_service != expected_service:
+        raise SatRepoError("PLC directory DID document PDS service does not match local state")
+    if actual_key != expected_key:
+        raise SatRepoError("PLC directory DID document signing key does not match local state")
+
+
+def _atproto_service(did_doc: dict[str, Any]) -> str | None:
+    for service in did_doc.get("service", []):
+        if service.get("id") == "#atproto_pds":
+            return service.get("serviceEndpoint")
+    return None
+
+
+def _atproto_verification_key(did_doc: dict[str, Any]) -> str | None:
+    did = did_doc.get("id")
+    for method in did_doc.get("verificationMethod", []):
+        if method.get("id") == f"{did}#atproto":
+            return method.get("publicKeyMultibase")
+    return None
+
+
+def _read_plc_did_doc(directory: str, did: str) -> dict[str, Any]:
+    try:
+        request = Request(
+            f"{directory.rstrip('/')}/{did}",
+            headers={"Accept": "application/json"},
+        )
+        with urlopen(request, timeout=10) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        message = exc.read().decode("utf-8", errors="replace")
+        raise SatRepoError(f"PLC directory GET failed for {did}: {message}") from exc
+    except (OSError, URLError, TimeoutError) as exc:
+        raise SatRepoError(f"PLC directory GET failed for {did}: {exc}") from exc
+
+
+def _post_plc_operation(directory: str, did: str, operation: dict[str, Any]) -> None:
+    body = json.dumps(operation).encode("utf-8")
+    try:
+        request = Request(
+            f"{directory.rstrip('/')}/{did}",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "satrepo",
+            },
+            method="POST",
+        )
+        with urlopen(request, timeout=10) as response:
+            if response.status != 200:
+                raise SatRepoError(f"PLC directory POST returned HTTP {response.status}")
+    except HTTPError as exc:
+        message = exc.read().decode("utf-8", errors="replace")
+        raise SatRepoError(f"PLC directory POST failed for {did}: {message}") from exc
+    except (OSError, URLError, TimeoutError) as exc:
+        raise SatRepoError(f"PLC directory POST failed for {did}: {exc}") from exc
 
 
 def _write_ref(path: Path, value: str) -> None:

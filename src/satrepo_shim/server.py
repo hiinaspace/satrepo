@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import sys
 from collections.abc import Callable
 
@@ -16,6 +17,7 @@ from .repo_view import CAR_MIME_TYPE, RepoViewError, StaticRepoView
 Handler = Callable[[StaticRepoView, web.Request], web.StreamResponse]
 REPO_VIEW_KEY = web.AppKey("repo_view", StaticRepoView)
 POLL_INTERVAL_KEY = web.AppKey("poll_interval", float)
+LOGGER = logging.getLogger(__name__)
 
 
 def create_app(
@@ -24,18 +26,33 @@ def create_app(
     service_did: str = "did:web:localhost",
     poll_interval: float = 2.0,
 ) -> web.Application:
-    app = web.Application()
+    app = web.Application(middlewares=[cors_middleware])
     app[REPO_VIEW_KEY] = StaticRepoView.from_origin(origin, service_did=service_did)
     app[POLL_INTERVAL_KEY] = poll_interval
+    app.router.add_route("OPTIONS", "/xrpc/_health", options)
+    app.router.add_route("OPTIONS", "/xrpc/{method}", options)
     app.router.add_get("/xrpc/_health", health)
     app.router.add_get("/xrpc/com.atproto.sync.subscribeRepos", subscribe_repos)
     app.router.add_get("/xrpc/{method}", xrpc)
     return app
 
 
+@web.middleware
+async def cors_middleware(request: web.Request, handler) -> web.StreamResponse:
+    response = await handler(request)
+    _add_cors_headers(response)
+    return response
+
+
+async def options(_request: web.Request) -> web.Response:
+    return web.Response(status=204)
+
+
 async def health(request: web.Request) -> web.Response:
     view = _view(request)
-    return web.json_response(view.health())
+    response = web.json_response(view.health())
+    _add_repo_rev_header(response, view)
+    return response
 
 
 async def xrpc(request: web.Request) -> web.StreamResponse:
@@ -49,10 +66,27 @@ async def xrpc(request: web.Request) -> web.StreamResponse:
 
     view = _view(request)
     try:
-        return handler(view, request)
+        response = handler(view, request)
+        if response.status < 400:
+            _add_repo_rev_header(response, view)
+        LOGGER.info(
+            "xrpc method=%s status=%s remote=%s",
+            method,
+            response.status,
+            request.remote,
+        )
+        return response
     except RepoViewError as exc:
+        LOGGER.info(
+            "xrpc method=%s status=%s error=%s remote=%s",
+            method,
+            exc.status,
+            exc.name,
+            request.remote,
+        )
         return _xrpc_error(exc.name, str(exc), status=exc.status)
     except OriginError as exc:
+        LOGGER.warning("xrpc method=%s origin_error=%s remote=%s", method, exc, request.remote)
         return _xrpc_error("OriginUnavailable", str(exc), status=502)
 
 
@@ -64,18 +98,29 @@ async def subscribe_repos(request: web.Request) -> web.WebSocketResponse:
 
     try:
         cursor = _subscription_cursor(request, view.last_seq())
+        LOGGER.info("subscribeRepos start cursor=%s remote=%s", cursor, request.remote)
         while not ws.closed:
-            cursor = await _send_events_after(ws, view, cursor)
+            cursor, sent = await _send_events_after(ws, view, cursor)
+            if sent:
+                LOGGER.info(
+                    "subscribeRepos sent=%s cursor=%s remote=%s",
+                    sent,
+                    cursor,
+                    request.remote,
+                )
             if not await _wait_for_poll_or_close(ws, poll_interval):
                 break
     except RepoViewError as exc:
+        LOGGER.info("subscribeRepos error=%s remote=%s", exc.name, request.remote)
         await ws.send_bytes(encode_error_frame(exc.name, str(exc)))
     except OriginError as exc:
+        LOGGER.warning("subscribeRepos origin_error=%s remote=%s", exc, request.remote)
         await ws.send_bytes(encode_error_frame("OriginUnavailable", str(exc)))
     except (ConnectionResetError, asyncio.CancelledError):
         pass
     finally:
         await ws.close()
+        LOGGER.info("subscribeRepos end remote=%s", request.remote)
     return ws
 
 
@@ -183,11 +228,13 @@ async def _send_events_after(
     ws: web.WebSocketResponse,
     view: StaticRepoView,
     cursor: int,
-) -> int:
+) -> tuple[int, int]:
+    sent = 0
     for event in view.events_after(cursor):
         await ws.send_bytes(encode_message_frame(event, view))
         cursor = max(cursor, int(event["seq"]))
-    return cursor
+        sent += 1
+    return cursor, sent
 
 
 async def _wait_for_poll_or_close(ws: web.WebSocketResponse, poll_interval: float) -> bool:
@@ -208,6 +255,20 @@ def _xrpc_error(name: str, message: str, *, status: int) -> web.Response:
     return web.json_response({"error": name, "message": message}, status=status)
 
 
+def _add_cors_headers(response: web.StreamResponse) -> None:
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = (
+        "Authorization, Content-Type, Atproto-Accept-Labelers"
+    )
+    response.headers["Access-Control-Expose-Headers"] = "Atproto-Repo-Rev"
+
+
+def _add_repo_rev_header(response: web.StreamResponse, view: StaticRepoView) -> None:
+    if rev := view.current_rev():
+        response.headers["Atproto-Repo-Rev"] = rev
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="satrepo-shim")
     parser.add_argument("--origin", required=True, help="static site origin URL or local site path")
@@ -225,6 +286,7 @@ def main(argv: list[str] | None = None) -> int:
         help="seconds between static-origin manifest polls for subscribeRepos",
     )
     args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     web.run_app(
         create_app(
