@@ -284,7 +284,7 @@ async function originBytes(env: Env, path: string): Promise<Uint8Array> {
 function originFetch(env: Env, path: string): Promise<Response> {
   const base = env.SATREPO_ORIGIN.replace(/\/+$/, "");
   return fetch(`${base}/${path.replace(/^\/+/, "")}`, {
-    headers: { "User-Agent": "satrepo-cloudflare-shim" },
+    headers: { "User-Agent": "satrepo-edge-shim" },
   });
 }
 

@@ -1,5 +1,5 @@
 {
-  "name": "@hiinaspace/satrepo-cloudflare-shim",
+  "name": "@hiinaspace/satrepo-edge-shim",
   "version": "0.1.0",
   "private": true,
   "type": "module",

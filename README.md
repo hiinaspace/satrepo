@@ -60,7 +60,7 @@ the Standard.site smoke test at
 [satrepo-dev.hiina.space/standard-site-smoke-test][demo-standard-site].
 
 There is also a serverless smoke test: the static repo is mirrored to
-[Cloudflare Pages][demo-pages], and a [Cloudflare Worker][demo-worker] serves
+[Cloudflare Pages][demo-pages], and an [edge Worker shim][demo-worker] serves
 the same read-only XRPC shim from that Pages origin.
 
 ## Install
@@ -336,12 +336,17 @@ uv run satrepo-shim \
   --service-did did:web:satrepo.example
 ```
 
-## Cloudflare Worker Proof
+## Edge Worker Proof
 
 Cloudflare's [Python Workers][cloudflare-python-workers] run on Pyodide, but
 package deployment is still limited enough that reusing the Python `aiohttp`
 shim directly is not the right shape yet. The repo includes a small TypeScript
-Worker at `workers/cloudflare-shim/` instead.
+Worker-style shim at `workers/edge-shim/` instead.
+
+The shim is written around web platform APIs like `fetch`, `Request`,
+`Response`, and `WebSocket`, which are the rough portability target for
+[WinterTC][wintertc] runtimes. The checked-in deployment config is still
+Cloudflare-specific because that is the live host for this proof.
 
 The current proof uses:
 
@@ -362,13 +367,13 @@ wrangler pages deploy /path/to/satrepo-checkout/site \
 Deploy the Worker:
 
 ```sh
-cd workers/cloudflare-shim
+cd workers/edge-shim
 npm install
 npm run check
 npm run deploy
 ```
 
-Set `SATREPO_ORIGIN` in `workers/cloudflare-shim/wrangler.toml` to the static
+Set `SATREPO_ORIGIN` in `workers/edge-shim/wrangler.toml` to the static
 host you want the Worker to read from. The Worker implements the read-only sync
 and repo XRPCs from static files, including `subscribeRepos` over Workers
 [WebSockets][cloudflare-workers-websockets].
@@ -423,6 +428,7 @@ useful to anyone else.
 [standard-site-validator]: https://site-validator.fly.dev/
 [static-atproto-discussion]: https://github.com/bluesky-social/atproto/discussions/2300
 [taproot]: https://atproto.at/
+[wintertc]: https://wintertc.org/
 
 [atproto-distsys]: https://atproto.com/articles/atproto-for-distsys-engineers
 [atproto-social-filesystem]: https://overreacted.io/a-social-filesystem/
