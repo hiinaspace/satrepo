@@ -11,6 +11,7 @@ from .jsonio import read_json
 from .manifest import write_manifest
 from .paths import RepoPaths, discover_root
 from .porcelain import diff_writes, load_storage
+from .static_site import render_standard_site
 from .worktree import scan_records
 
 PUBLIC_DIR_MODE = 0o755
@@ -116,6 +117,8 @@ def publish_static(paths: RepoPaths, config: RepoConfig, manifest: dict) -> None
     _copy_tree_files(paths.state / "blocks", paths.site / "repo" / "blocks")
     _copy_tree_files(paths.state / "blobs", paths.site / "repo" / "blobs")
     _copy_if_exists(paths.state / "snapshot.car", paths.site / "repo" / "snapshot.car")
+
+    render_standard_site(paths, config)
 
     write_manifest(paths.site_manifest, manifest)
     _make_public_file(paths.site_manifest)
