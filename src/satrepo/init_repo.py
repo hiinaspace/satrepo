@@ -11,6 +11,7 @@ from .jsonio import write_json_atomic
 from .keys import generate_key, write_private_key
 from .manifest import initial_manifest, write_manifest
 from .paths import RepoPaths, key_dir_for_did, repo_paths
+from .publish import publish_static
 
 STATE_SUBDIRS = (
     "refs",
@@ -78,7 +79,7 @@ def init_repo(
 
     manifest = initial_manifest(config)
     write_manifest(paths.local_manifest, manifest)
-    _publish_static_baseline(paths, config, genesis.did_doc, manifest)
+    publish_static(paths, config, manifest)
     return config
 
 
@@ -90,18 +91,6 @@ def _create_layout(paths: RepoPaths) -> None:
         (paths.state / subdir).mkdir(parents=True, exist_ok=True)
     for subdir in SITE_SUBDIRS:
         (paths.site / subdir).mkdir(parents=True, exist_ok=True)
-
-
-def _publish_static_baseline(
-    paths: RepoPaths,
-    config: RepoConfig,
-    did_doc: dict,
-    manifest: dict,
-) -> None:
-    _write_ref(paths.site / ".well-known" / "atproto-did", config.did)
-    write_json_atomic(paths.site / "did.json", did_doc)
-    _write_ref(paths.site / "repo" / "refs" / "last_seq", "0")
-    write_manifest(paths.site_manifest, manifest)
 
 
 def _write_ref(path: Path, value: str) -> None:

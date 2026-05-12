@@ -33,6 +33,8 @@ def test_init_creates_local_and_static_layout(tmp_path, monkeypatch):
         encoding="utf-8"
     ).strip() == config.did
     assert json.loads((paths.state / "did.json").read_text(encoding="utf-8"))["id"] == config.did
+    assert paths.site_manifest.stat().st_mode & stat.S_IROTH
+    assert (paths.site / "did.json").stat().st_mode & stat.S_IROTH
 
     assert manifest == read_manifest(paths.local_manifest)
     assert manifest["did"] == config.did

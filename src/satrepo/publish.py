@@ -13,6 +13,9 @@ from .paths import RepoPaths, discover_root
 from .porcelain import diff_writes, load_storage
 from .worktree import scan_records
 
+PUBLIC_DIR_MODE = 0o755
+PUBLIC_FILE_MODE = 0o644
+
 
 @dataclass(frozen=True)
 class PublishResult:
@@ -100,7 +103,7 @@ def publish_static(paths: RepoPaths, config: RepoConfig, manifest: dict) -> None
         "repo/blocks",
         "repo/blobs",
     ):
-        (paths.site / subdir).mkdir(parents=True, exist_ok=True)
+        _ensure_public_dir(paths.site / subdir)
 
     _write_text(paths.site / ".well-known" / "atproto-did", config.did)
     _copy_if_exists(paths.state / "did.json", paths.site / "did.json")
@@ -115,6 +118,7 @@ def publish_static(paths: RepoPaths, config: RepoConfig, manifest: dict) -> None
     _copy_if_exists(paths.state / "snapshot.car", paths.site / "repo" / "snapshot.car")
 
     write_manifest(paths.site_manifest, manifest)
+    _make_public_file(paths.site_manifest)
 
 
 def _copy_tree_files(src: Path, dest: Path) -> None:
@@ -122,18 +126,29 @@ def _copy_tree_files(src: Path, dest: Path) -> None:
         return
     for path in src.iterdir():
         if path.is_file():
-            shutil.copy2(path, dest / path.name)
+            _copy_if_exists(path, dest / path.name)
 
 
 def _copy_if_exists(src: Path, dest: Path) -> None:
     if src.exists():
-        dest.parent.mkdir(parents=True, exist_ok=True)
+        _ensure_public_dir(dest.parent)
         shutil.copy2(src, dest)
+        _make_public_file(dest)
 
 
 def _write_text(path: Path, value: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_public_dir(path.parent)
     path.write_text(f"{value}\n", encoding="utf-8")
+    _make_public_file(path)
+
+
+def _ensure_public_dir(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    path.chmod((path.stat().st_mode & 0o777) | PUBLIC_DIR_MODE)
+
+
+def _make_public_file(path: Path) -> None:
+    path.chmod((path.stat().st_mode & 0o777) | PUBLIC_FILE_MODE)
 
 
 def _read_ref(path: Path) -> str | None:

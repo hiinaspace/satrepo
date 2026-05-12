@@ -1,4 +1,5 @@
 import json
+import stat
 
 from carbox.car import read_car
 
@@ -60,6 +61,11 @@ def test_publish_creates_static_repo_artifacts(tmp_path, monkeypatch):
     ]
     assert (paths.site / commit_events[-1]["blocks"]).exists()
     assert (paths.site / "repo" / "snapshot.car").exists()
+    for path in paths.site.rglob("*"):
+        if path.is_file():
+            assert path.stat().st_mode & stat.S_IROTH, path
+        elif path.is_dir():
+            assert path.stat().st_mode & stat.S_IXOTH, path
 
     roots, blocks = read_car((paths.site / "repo" / "snapshot.car").read_bytes())
     assert str(roots[0]) == manifest["head"]["cid"]
