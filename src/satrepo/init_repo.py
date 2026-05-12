@@ -33,6 +33,8 @@ SITE_SUBDIRS = (
 WORKTREE_SUBDIRS = (
     "app.bsky.actor.profile",
     "app.bsky.feed.post",
+    "site.standard.document",
+    "site.standard.publication",
     "blobs",
 )
 

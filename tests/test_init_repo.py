@@ -28,6 +28,8 @@ def test_init_creates_local_and_static_layout(tmp_path, monkeypatch):
 
     assert (paths.worktree / "app.bsky.actor.profile").is_dir()
     assert (paths.worktree / "app.bsky.feed.post").is_dir()
+    assert (paths.worktree / "site.standard.document").is_dir()
+    assert (paths.worktree / "site.standard.publication").is_dir()
     assert (paths.state / "refs" / "did").read_text(encoding="utf-8").strip() == config.did
     assert (paths.site / ".well-known" / "atproto-did").read_text(
         encoding="utf-8"

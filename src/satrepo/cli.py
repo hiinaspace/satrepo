@@ -15,13 +15,16 @@ from .init_repo import init_repo
 from .plc import plc_summary, submit_plc_operation, update_pds_url
 from .porcelain import commit_log, worktree_status
 from .publish import publish
+from .standard_site import create_standard_document, create_standard_publication
 from .verify import format_result, verify_repo
 
 app = typer.Typer(help="Local static ATProto repo authoring tools.")
 plc_app = typer.Typer(help="Manage local did:plc state.")
 bsky_app = typer.Typer(help="Bluesky record helpers.")
+standard_app = typer.Typer(help="Standard.site record helpers.")
 app.add_typer(plc_app, name="plc")
 app.add_typer(bsky_app, name="bsky")
+app.add_typer(standard_app, name="standard")
 
 
 RootOption = Annotated[Path, typer.Option(help="Checkout root.")]
@@ -114,6 +117,63 @@ def bsky_post(
     post = create_bsky_post(root, text=text, created_at=created_at)
     typer.echo(f"created {post.repo_path}")
     typer.echo(f"file: {post.path}")
+
+
+@standard_app.command("publication")
+def standard_publication(
+    name: Annotated[str, typer.Argument(help="Publication name.")],
+    url: Annotated[str, typer.Option("--url", help="Canonical publication URL.")],
+    root: RootOption = Path("."),
+    description: Annotated[
+        str | None,
+        typer.Option("--description", help="Brief publication description."),
+    ] = None,
+) -> None:
+    publication = create_standard_publication(
+        root,
+        name=name,
+        url=url,
+        description=description,
+    )
+    typer.echo(f"created {publication.repo_path}")
+    typer.echo(f"file: {publication.path}")
+
+
+@standard_app.command("document")
+def standard_document(
+    title: Annotated[str, typer.Argument(help="Document title.")],
+    markdown: Annotated[str, typer.Argument(help="Markdown document body.")],
+    path: Annotated[str, typer.Option("--path", help="Canonical document path.")],
+    root: RootOption = Path("."),
+    description: Annotated[
+        str | None,
+        typer.Option("--description", help="Brief document description."),
+    ] = None,
+    tag: Annotated[
+        list[str] | None,
+        typer.Option("--tag", help="Document tag. May be passed multiple times."),
+    ] = None,
+    published_at: Annotated[
+        str | None,
+        typer.Option("--published-at", help="Override record publishedAt datetime."),
+    ] = None,
+    publication_rkey: Annotated[
+        str | None,
+        typer.Option("--publication-rkey", help="Publication rkey to link this document to."),
+    ] = None,
+) -> None:
+    document = create_standard_document(
+        root,
+        title=title,
+        markdown=markdown,
+        path=path,
+        description=description,
+        tags=tag,
+        published_at=published_at,
+        publication_rkey=publication_rkey,
+    )
+    typer.echo(f"created {document.repo_path}")
+    typer.echo(f"file: {document.path}")
 
 
 @plc_app.command("show")
