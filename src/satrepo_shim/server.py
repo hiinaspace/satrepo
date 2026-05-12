@@ -168,6 +168,29 @@ def get_blob(_view: StaticRepoView, _request: web.Request) -> web.Response:
     return _xrpc_error("BlobNotFound", "Blob not found", status=404)
 
 
+def repo_get_record(view: StaticRepoView, request: web.Request) -> web.Response:
+    return web.json_response(
+        view.record(
+            _required_query(request, "repo"),
+            _required_query(request, "collection"),
+            _required_query(request, "rkey"),
+            request.query.get("cid"),
+        )
+    )
+
+
+def repo_list_records(view: StaticRepoView, request: web.Request) -> web.Response:
+    return web.json_response(
+        view.list_records(
+            _required_query(request, "repo"),
+            _required_query(request, "collection"),
+            limit=_bounded_limit(request.query.get("limit"), default=50, maximum=100),
+            cursor=request.query.get("cursor"),
+            reverse=_query_bool(request.query.get("reverse")),
+        )
+    )
+
+
 def describe_repo(view: StaticRepoView, request: web.Request) -> web.Response:
     return web.json_response(view.describe_repo(_required_query(request, "repo")))
 
@@ -189,6 +212,8 @@ XRPC_HANDLERS: dict[str, Handler] = {
     "com.atproto.sync.getBlocks": get_blocks,
     "com.atproto.sync.listBlobs": list_blobs,
     "com.atproto.sync.getBlob": get_blob,
+    "com.atproto.repo.getRecord": repo_get_record,
+    "com.atproto.repo.listRecords": repo_list_records,
     "com.atproto.repo.describeRepo": describe_repo,
     "com.atproto.identity.resolveHandle": resolve_handle,
     "com.atproto.server.describeServer": describe_server,
@@ -204,6 +229,22 @@ def _required_query(request: web.Request, name: str) -> str:
     if value is None:
         raise RepoViewError(f"missing required query parameter: {name}")
     return value
+
+
+def _bounded_limit(value: str | None, *, default: int, maximum: int) -> int:
+    if value is None:
+        return default
+    try:
+        limit = int(value)
+    except ValueError as exc:
+        raise RepoViewError("limit must be an integer") from exc
+    if limit < 1 or limit > maximum:
+        raise RepoViewError(f"limit must be between 1 and {maximum}")
+    return limit
+
+
+def _query_bool(value: str | None) -> bool:
+    return value in {"true", "1", "yes"}
 
 
 def _subscription_cursor(request: web.Request, last_seq: int) -> int:

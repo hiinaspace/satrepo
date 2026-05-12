@@ -70,6 +70,32 @@ def test_shim_serves_readonly_sync_xrpcs(tmp_path, monkeypatch):
             assert described["collections"] == ["app.bsky.feed.post"]
             assert described["handleIsCorrect"] is True
 
+            listed_records = await _get_json(
+                client,
+                "/xrpc/com.atproto.repo.listRecords",
+                repo=manifest["did"],
+                collection="app.bsky.feed.post",
+                limit="10",
+            )
+            assert [record["uri"] for record in listed_records["records"]] == [
+                f"at://{manifest['did']}/app.bsky.feed.post/{rkey}"
+            ]
+            assert listed_records["records"][0]["value"] == {
+                "$type": "app.bsky.feed.post",
+                "createdAt": "2026-05-11T23:00:00Z",
+                "text": "hello from the shim test",
+            }
+            record_cid = listed_records["records"][0]["cid"]
+
+            repo_record = await _get_json(
+                client,
+                "/xrpc/com.atproto.repo.getRecord",
+                repo=manifest["handle"],
+                collection="app.bsky.feed.post",
+                rkey=rkey,
+            )
+            assert repo_record == listed_records["records"][0]
+
             health = await _get_json(client, "/xrpc/_health")
             assert health["ok"] is True
             assert health["did"] == manifest["did"]
@@ -91,6 +117,15 @@ def test_shim_serves_readonly_sync_xrpcs(tmp_path, monkeypatch):
             repo_roots, repo_blocks = read_car(await repo_response.read())
             assert str(repo_roots[0]) == manifest["head"]["cid"]
             assert repo_blocks
+
+            blocks_response = await client.get(
+                "/xrpc/com.atproto.sync.getBlocks",
+                params={"did": manifest["did"], "cids": record_cid},
+            )
+            assert blocks_response.status == 200
+            assert blocks_response.content_type == CAR_MIME_TYPE
+            _, blocks = read_car(await blocks_response.read())
+            assert [block.cid.encode("base32") for block in blocks] == [record_cid]
 
             record_response = await client.get(
                 "/xrpc/com.atproto.sync.getRecord",

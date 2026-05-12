@@ -4,9 +4,11 @@ from __future__ import annotations
 
 # ruff: noqa: I001
 # Arroba 2.0 requires storage to be imported before repo.
+import json
 from dataclasses import dataclass
 from typing import Any
 
+import dag_json
 from arroba import util
 from arroba.storage import Action, Block, CommitData, CommitOp, MemoryStorage
 from arroba.repo import Repo
@@ -106,9 +108,7 @@ class StaticRepoView:
         return {"did": manifest["did"]}
 
     def describe_repo(self, repo: str) -> dict[str, Any]:
-        manifest = self.manifest()
-        if repo not in {manifest["did"], manifest["handle"]}:
-            raise RepoViewError(f"Could not find repo: {repo}", name="RepoNotFound")
+        manifest = self._manifest_for_repo(repo)
 
         return {
             "handle": manifest["handle"],
@@ -117,6 +117,60 @@ class StaticRepoView:
             "collections": sorted(self.load_repo().repo.get_contents()),
             "handleIsCorrect": True,
         }
+
+    def record(self, repo: str, collection: str, rkey: str, cid: str | None = None) -> dict:
+        manifest = self._manifest_for_repo(repo)
+        loaded = self.load_repo()
+        record_cid = self._record_cid(loaded, collection, rkey)
+        if cid and CID.decode(cid) != record_cid:
+            raise RepoViewError(f"Record not found: {collection}/{rkey}", name="RecordNotFound")
+
+        record_block = loaded.storage.read(record_cid)
+        if not record_block:
+            raise RepoViewError(f"Record block not found: {record_cid}", name="BlockNotFound")
+        return _record_json(manifest["did"], collection, rkey, record_block)
+
+    def list_records(
+        self,
+        repo: str,
+        collection: str,
+        *,
+        limit: int = 50,
+        cursor: str | None = None,
+        reverse: bool = False,
+    ) -> dict[str, Any]:
+        manifest = self._manifest_for_repo(repo)
+        loaded = self.load_repo()
+        if not loaded.repo.mst:
+            raise RepoViewError("loaded repo has no MST", name="RepoNotFound")
+
+        prefix = f"{collection}/"
+        entries = loaded.repo.mst.list_with_prefix(prefix)
+        if cursor:
+            cursor_key = f"{collection}/{cursor}"
+            if reverse:
+                entries = [entry for entry in entries if entry.key < cursor_key]
+            else:
+                entries = [entry for entry in entries if entry.key > cursor_key]
+        if reverse:
+            entries = list(reversed(entries))
+
+        page = entries[: limit + 1]
+        has_more = len(page) > limit
+        page = page[:limit]
+        blocks = loaded.storage.read_many([entry.value for entry in page])
+        records = []
+        for entry in page:
+            record_block = blocks[entry.value]
+            if not record_block:
+                raise RepoViewError(f"Record block not found: {entry.value}", name="BlockNotFound")
+            _, rkey = entry.key.split("/", 1)
+            records.append(_record_json(manifest["did"], collection, rkey, record_block))
+
+        response: dict[str, Any] = {"records": records}
+        if has_more and page:
+            response["cursor"] = page[-1].key.split("/", 1)[1]
+        return response
 
     def describe_server(self) -> dict[str, Any]:
         handle = self.manifest()["handle"]
@@ -137,15 +191,12 @@ class StaticRepoView:
         if not loaded.repo.mst:
             raise RepoViewError("loaded repo has no MST", name="RepoNotFound")
 
-        path = f"{collection}/{rkey}"
-        record_cid = loaded.repo.mst.get(path)
-        if not record_cid:
-            raise RepoViewError(f"Record not found: {path}", name="RecordNotFound")
-
+        record_cid = self._record_cid(loaded, collection, rkey)
         record_block = loaded.storage.read(record_cid)
         if not record_block:
             raise RepoViewError(f"Record block not found: {record_cid}", name="BlockNotFound")
 
+        path = f"{collection}/{rkey}"
         synthetic_commit = Block(
             decoded=record_block.decoded,
             ops=[CommitOp(Action.CREATE, path, record_block.cid)],
@@ -171,11 +222,12 @@ class StaticRepoView:
         latest = self.latest_commit(did)
         blocks = []
         for cid in cids:
+            decoded_cid = CID.decode(cid)
             try:
-                encoded = self.origin.read_bytes(f"repo/blocks/{cid}")
+                encoded = self._read_block_bytes(decoded_cid)
             except Exception as exc:
                 raise RepoViewError(f"No block found for CID {cid}", name="BlockNotFound") from exc
-            blocks.append(car.Block(cid=CID.decode(cid), data=encoded))
+            blocks.append(car.Block(cid=decoded_cid, data=encoded))
         return car.write_car([CID.decode(latest["cid"])], blocks)
 
     def list_blobs(self, did: str) -> dict[str, Any]:
@@ -205,3 +257,45 @@ class StaticRepoView:
         if manifest.get("did") != did:
             raise RepoViewError(f"Could not find repo for DID: {did}", name="RepoNotFound")
         return manifest
+
+    def _manifest_for_repo(self, repo: str) -> dict[str, Any]:
+        manifest = self.manifest()
+        if repo not in {manifest["did"], manifest["handle"]}:
+            raise RepoViewError(f"Could not find repo: {repo}", name="RepoNotFound")
+        return manifest
+
+    def _record_cid(self, loaded: LoadedRepo, collection: str, rkey: str) -> CID:
+        if not loaded.repo.mst:
+            raise RepoViewError("loaded repo has no MST", name="RepoNotFound")
+
+        path = f"{collection}/{rkey}"
+        record_cid = loaded.repo.mst.get(path)
+        if not record_cid:
+            raise RepoViewError(f"Record not found: {path}", name="RecordNotFound")
+        return record_cid
+
+    def _read_block_bytes(self, cid: CID) -> bytes:
+        candidates = (
+            cid.encode("base32"),
+            cid.encode("base58btc"),
+            str(cid),
+        )
+        for candidate in dict.fromkeys(candidates):
+            try:
+                return self.origin.read_bytes(f"repo/blocks/{candidate}")
+            except Exception:
+                pass
+        raise RepoViewError(f"No block found for CID {cid}", name="BlockNotFound")
+
+
+def _record_json(did: str, collection: str, rkey: str, record_block: Block) -> dict:
+    return json.loads(
+        dag_json.encode(
+            {
+                "uri": util.at_uri(did, collection, rkey),
+                "cid": record_block.cid.encode("base32"),
+                "value": record_block.decoded,
+            },
+            dialect="atproto",
+        )
+    )
