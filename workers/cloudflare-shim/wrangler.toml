@@ -1,0 +1,9 @@
+name = "satrepo-shim"
+main = "src/index.ts"
+compatibility_date = "2026-05-12"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+SATREPO_ORIGIN = "https://satrepo-static-site.pages.dev"
+SERVICE_DID = "did:web:satrepo-dev.hiina.space"
+POLL_INTERVAL_MS = "2000"

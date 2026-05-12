@@ -1,0 +1,21 @@
+{
+  "name": "@hiinaspace/satrepo-cloudflare-shim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "@atproto/lex-cbor": "^0.0.16",
+    "@atproto/lex-data": "^0.0.15",
+    "@atproto/repo": "^0.9.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260510.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.90.0"
+  }
+}

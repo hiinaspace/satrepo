@@ -59,6 +59,10 @@ repo from [Taproot][demo-taproot], see posts on [bsky.app][demo-bsky], and read
 the Standard.site smoke test at
 [satrepo-dev.hiina.space/standard-site-smoke-test][demo-standard-site].
 
+There is also a serverless smoke test: the static repo is mirrored to
+[Cloudflare Pages][demo-pages], and a [Cloudflare Worker][demo-worker] serves
+the same read-only XRPC shim from that Pages origin.
+
 ## Install
 
 Easiest is using `uv`:
@@ -332,6 +336,43 @@ uv run satrepo-shim \
   --service-did did:web:satrepo.example
 ```
 
+## Cloudflare Worker Proof
+
+Cloudflare's [Python Workers][cloudflare-python-workers] run on Pyodide, but
+package deployment is still limited enough that reusing the Python `aiohttp`
+shim directly is not the right shape yet. The repo includes a small TypeScript
+Worker at `workers/cloudflare-shim/` instead.
+
+The current proof uses:
+
+```text
+https://satrepo-static-site.pages.dev/       -> static site/repo files
+https://satrepo-shim.hiinaops.workers.dev/  -> Worker XRPC shim
+```
+
+Deploy the static site to Cloudflare Pages:
+
+```sh
+wrangler pages project create satrepo-static-site --production-branch main
+wrangler pages deploy /path/to/satrepo-checkout/site \
+  --project-name satrepo-static-site \
+  --branch main
+```
+
+Deploy the Worker:
+
+```sh
+cd workers/cloudflare-shim
+npm install
+npm run check
+npm run deploy
+```
+
+Set `SATREPO_ORIGIN` in `workers/cloudflare-shim/wrangler.toml` to the static
+host you want the Worker to read from. The Worker implements the read-only sync
+and repo XRPCs from static files, including `subscribeRepos` over Workers
+[WebSockets][cloudflare-workers-websockets].
+
 ## Current Limitations
 
 - The shim is single-origin/single-repo per process.
@@ -364,9 +405,13 @@ useful to anyone else.
 
 [bridgy-fed]: https://fed.brid.gy/docs
 [bsky-app]: https://bsky.app/
+[cloudflare-python-workers]: https://developers.cloudflare.com/workers/languages/python/
+[cloudflare-workers-websockets]: https://developers.cloudflare.com/workers/runtime-apis/websockets/
 [demo-bsky]: https://bsky.app/profile/satrepo-dev.hiina.space
+[demo-pages]: https://satrepo-static-site.pages.dev/
 [demo-standard-site]: https://satrepo-dev.hiina.space/standard-site-smoke-test/
 [demo-taproot]: https://atproto.at/uri/at://did:plc:6sgey5rgl4ce5fvssg4gzkph
+[demo-worker]: https://satrepo-shim.hiinaops.workers.dev/xrpc/_health
 [did-plc]: https://web.plc.directory/spec/v0.1/did-plc
 [federation-sandbox]: https://atproto.com/blog/building-on-atproto
 [git-dumb-http]: https://git-scm.com/docs/http-protocol
