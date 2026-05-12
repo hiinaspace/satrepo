@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-import argparse
 import asyncio
 import logging
 import sys
 from collections.abc import Callable
+from typing import Annotated
 
+import click
+import typer
 from aiohttp import web
 
 from .firehose import encode_error_frame, encode_message_frame
@@ -18,6 +20,14 @@ Handler = Callable[[StaticRepoView, web.Request], web.StreamResponse]
 REPO_VIEW_KEY = web.AppKey("repo_view", StaticRepoView)
 POLL_INTERVAL_KEY = web.AppKey("poll_interval", float)
 LOGGER = logging.getLogger(__name__)
+SHIM_HELP = (
+    "Serve one generated satrepo site as a read-only ATProto PDS-shaped shim. "
+    "The shim reads static repo artifacts from --origin and exposes sync XRPCs."
+)
+SHIM_EPILOG = (
+    "Example: satrepo-shim --origin https://satrepo.example --port 8781 "
+    "--service-did did:web:satrepo.example"
+)
 
 
 def create_app(
@@ -310,35 +320,69 @@ def _add_repo_rev_header(response: web.StreamResponse, view: StaticRepoView) -> 
         response.headers["Atproto-Repo-Rev"] = rev
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="satrepo-shim")
-    parser.add_argument("--origin", required=True, help="static site origin URL or local site path")
-    parser.add_argument("--host", default="127.0.0.1", help="host to bind")
-    parser.add_argument("--port", type=int, default=8080, help="port to bind")
-    parser.add_argument(
-        "--service-did",
-        default="did:web:localhost",
-        help="service DID reported by com.atproto.server.describeServer",
-    )
-    parser.add_argument(
-        "--poll-interval",
-        type=float,
-        default=2.0,
-        help="seconds between static-origin manifest polls for subscribeRepos",
-    )
-    args = parser.parse_args(argv)
+def run_shim(
+    origin: Annotated[
+        str,
+        typer.Option(
+            "--origin",
+            help="Static site origin URL or local site path containing repo/manifest.json.",
+        ),
+    ],
+    host: Annotated[str, typer.Option("--host", help="Host interface to bind.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", help="TCP port to bind.")] = 8080,
+    service_did: Annotated[
+        str,
+        typer.Option(
+            "--service-did",
+            help="Service DID reported by com.atproto.server.describeServer.",
+        ),
+    ] = "did:web:localhost",
+    poll_interval: Annotated[
+        float,
+        typer.Option(
+            "--poll-interval",
+            help="Seconds between static-origin manifest polls for subscribeRepos.",
+        ),
+    ] = 2.0,
+) -> None:
+    """Run the shim until interrupted."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     web.run_app(
         create_app(
-            origin=args.origin,
-            service_did=args.service_did,
-            poll_interval=args.poll_interval,
+            origin=origin,
+            service_did=service_did,
+            poll_interval=poll_interval,
         ),
-        host=args.host,
-        port=args.port,
+        host=host,
+        port=port,
     )
-    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    command_info = typer.main.CommandInfo(
+        callback=run_shim,
+        help=SHIM_HELP,
+        epilog=SHIM_EPILOG,
+        no_args_is_help=True,
+    )
+    command = typer.main.get_command_from_info(
+        command_info,
+        pretty_exceptions_short=True,
+        rich_markup_mode="rich",
+    )
+    try:
+        result = command.main(
+            args=sys.argv[1:] if argv is None else argv,
+            prog_name="satrepo-shim",
+            standalone_mode=False,
+        )
+        return result or 0
+    except click.ClickException as exc:
+        exc.show()
+        raise SystemExit(exc.exit_code) from exc
+    except click.exceptions.Exit as exc:
+        return exc.exit_code
 
 
 if __name__ == "__main__":

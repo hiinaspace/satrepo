@@ -3,6 +3,7 @@ name = "satrepo"
 version = "0.1.0"
 description = "Static ATProto repo authoring and sync shim prototype"
 readme = "README.md"
+license = "WTFPL"
 authors = [
     { name = "Hiina Kuukan", email = "hiina@hiina.space" }
 ]

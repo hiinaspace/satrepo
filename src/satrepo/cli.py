@@ -18,25 +18,74 @@ from .publish import publish
 from .standard_site import create_standard_document, create_standard_publication
 from .verify import format_result, verify_repo
 
-app = typer.Typer(help="Local static ATProto repo authoring tools.")
-plc_app = typer.Typer(help="Manage local did:plc state.")
-bsky_app = typer.Typer(help="Bluesky record helpers.")
-standard_app = typer.Typer(help="Standard.site record helpers.")
+app = typer.Typer(
+    help=(
+        "Author an ATProto repo from local JSON files, sign commits locally, "
+        "and regenerate a static site that can be served by satrepo-shim."
+    ),
+    epilog=(
+        "Typical flow: satrepo init alice.example --pds-url https://satrepo.example; "
+        "satrepo bsky post 'hello'; satrepo status; satrepo commit; satrepo log."
+    ),
+    no_args_is_help=True,
+    add_completion=False,
+)
+plc_app = typer.Typer(
+    help=(
+        "Inspect or submit local did:plc genesis state. These commands are the only "
+        "ones that talk to a PLC directory."
+    ),
+    no_args_is_help=True,
+    add_completion=False,
+)
+bsky_app = typer.Typer(
+    help="Create Bluesky records with valid record keys and basic schema shape.",
+    no_args_is_help=True,
+    add_completion=False,
+)
+standard_app = typer.Typer(
+    help="Create Standard.site publication and document records.",
+    no_args_is_help=True,
+    add_completion=False,
+)
 app.add_typer(plc_app, name="plc")
 app.add_typer(bsky_app, name="bsky")
 app.add_typer(standard_app, name="standard")
 
 
-RootOption = Annotated[Path, typer.Option(help="Checkout root.")]
+RootOption = Annotated[
+    Path,
+    typer.Option(
+        "--root",
+        help="satrepo checkout root. Defaults to the current directory.",
+    ),
+]
 
 
-@app.command("init")
+@app.command(
+    "init",
+    help=(
+        "Create a local satrepo checkout, keys, did:plc genesis operation, and empty "
+        "static repo artifacts. This does not publish to plc.directory."
+    ),
+    short_help="Initialize a new local satrepo checkout.",
+)
 def init_command(
     handle: Annotated[str, typer.Argument(help="ATProto handle for the repo.")],
-    pds_url: Annotated[str, typer.Option("--pds-url", help="Future shim/PDS service URL.")],
+    pds_url: Annotated[
+        str,
+        typer.Option(
+            "--pds-url",
+            help="HTTPS URL that the DID document should advertise as this repo's PDS.",
+        ),
+    ],
     root: RootOption = Path("."),
     force: Annotated[
-        bool, typer.Option("--force", help="Overwrite existing config and keys.")
+        bool,
+        typer.Option(
+            "--force",
+            help="Overwrite existing satrepo config and key files for this root.",
+        ),
     ] = False,
 ) -> None:
     config = init_repo(root, handle=handle, pds_url=pds_url, force=force)
@@ -46,7 +95,14 @@ def init_command(
     typer.echo(f"keys: {config.key_dir}")
 
 
-@app.command("status")
+@app.command(
+    "status",
+    help=(
+        "Compare worktree records with the last signed commit and show create, update, "
+        "and delete operations that commit would write."
+    ),
+    short_help="Show uncommitted worktree changes.",
+)
 def status_command(root: RootOption = Path(".")) -> None:
     status = worktree_status(root)
     typer.echo(f"root: {status.root}")
@@ -66,11 +122,21 @@ def status_command(root: RootOption = Path(".")) -> None:
         typer.echo(f"  {change.action:<6} {change.path}")
 
 
-@app.command("log")
+@app.command(
+    "log",
+    help="Show signed commit events from newest to oldest, including repo ops.",
+    short_help="Show signed commit history.",
+)
 def log_command(
     root: RootOption = Path("."),
     limit: Annotated[
-        int | None, typer.Option("--limit", "-n", min=1, help="Maximum commits to show.")
+        int | None,
+        typer.Option(
+            "--limit",
+            "-n",
+            min=1,
+            help="Maximum number of commits to show.",
+        ),
     ] = None,
 ) -> None:
     entries = commit_log(root, limit=limit)
@@ -92,12 +158,26 @@ def log_command(
             typer.echo(f"  {op.action:<6} {op.path}")
 
 
-@app.command("commit")
+@app.command(
+    "commit",
+    help=(
+        "Sign the current worktree into the local ATProto repo and regenerate site/. "
+        "No network publishing happens here."
+    ),
+    short_help="Create a signed repo commit from the worktree.",
+)
 def commit_command(root: RootOption = Path(".")) -> None:
     _run_publish(root, verb="committed")
 
 
-@app.command("verify")
+@app.command(
+    "verify",
+    help=(
+        "Check generated repo artifacts, commit signatures, manifest consistency, "
+        "snapshot CAR loading, and known collection rkey rules."
+    ),
+    short_help="Verify generated repo artifacts.",
+)
 def verify_command(root: RootOption = Path(".")) -> None:
     result = verify_repo(root)
     typer.echo(format_result(result))
@@ -105,13 +185,23 @@ def verify_command(root: RootOption = Path(".")) -> None:
         raise typer.Exit(1)
 
 
-@bsky_app.command("post")
+@bsky_app.command(
+    "post",
+    help=(
+        "Write a new app.bsky.feed.post JSON file under worktree/ with a valid TID rkey. "
+        "Run satrepo commit afterward to sign it into the repo."
+    ),
+    short_help="Create a Bluesky post record.",
+)
 def bsky_post(
     text: Annotated[str, typer.Argument(help="Text for a new app.bsky.feed.post record.")],
     root: RootOption = Path("."),
     created_at: Annotated[
         str | None,
-        typer.Option("--created-at", help="Override record createdAt datetime."),
+        typer.Option(
+            "--created-at",
+            help="Override the record createdAt timestamp. Defaults to the current UTC time.",
+        ),
     ] = None,
 ) -> None:
     post = create_bsky_post(root, text=text, created_at=created_at)
@@ -119,10 +209,23 @@ def bsky_post(
     typer.echo(f"file: {post.path}")
 
 
-@standard_app.command("publication")
+@standard_app.command(
+    "publication",
+    help=(
+        "Write a site.standard.publication record. This describes the canonical HTTP "
+        "site that Standard.site indexers should verify."
+    ),
+    short_help="Create a Standard.site publication record.",
+)
 def standard_publication(
     name: Annotated[str, typer.Argument(help="Publication name.")],
-    url: Annotated[str, typer.Option("--url", help="Canonical publication URL.")],
+    url: Annotated[
+        str,
+        typer.Option(
+            "--url",
+            help="Canonical HTTPS base URL for the publication, for example https://alice.example.",
+        ),
+    ],
     root: RootOption = Path("."),
     description: Annotated[
         str | None,
@@ -139,11 +242,24 @@ def standard_publication(
     typer.echo(f"file: {publication.path}")
 
 
-@standard_app.command("document")
+@standard_app.command(
+    "document",
+    help=(
+        "Write a site.standard.document record with Markdown content. On commit, "
+        "satrepo also renders a matching static HTML page under site/."
+    ),
+    short_help="Create a Standard.site document record.",
+)
 def standard_document(
     title: Annotated[str, typer.Argument(help="Document title.")],
     markdown: Annotated[str, typer.Argument(help="Markdown document body.")],
-    path: Annotated[str, typer.Option("--path", help="Canonical document path.")],
+    path: Annotated[
+        str,
+        typer.Option(
+            "--path",
+            help="Canonical URL path within the publication, for example /first-note.",
+        ),
+    ],
     root: RootOption = Path("."),
     description: Annotated[
         str | None,
@@ -155,11 +271,17 @@ def standard_document(
     ] = None,
     published_at: Annotated[
         str | None,
-        typer.Option("--published-at", help="Override record publishedAt datetime."),
+        typer.Option(
+            "--published-at",
+            help="Override the record publishedAt timestamp. Defaults to current UTC time.",
+        ),
     ] = None,
     publication_rkey: Annotated[
         str | None,
-        typer.Option("--publication-rkey", help="Publication rkey to link this document to."),
+        typer.Option(
+            "--publication-rkey",
+            help="Publication rkey to link this document to. Defaults to the first publication.",
+        ),
     ] = None,
 ) -> None:
     document = create_standard_document(
@@ -176,7 +298,11 @@ def standard_document(
     typer.echo(f"file: {document.path}")
 
 
-@plc_app.command("show")
+@plc_app.command(
+    "show",
+    help="Show local did:plc metadata, key directory, PDS URL, and registration status.",
+    short_help="Show local PLC state.",
+)
 def plc_show(root: RootOption = Path(".")) -> None:
     summary = plc_summary(root)
     typer.echo(f"did: {summary['did']}")
@@ -187,9 +313,22 @@ def plc_show(root: RootOption = Path(".")) -> None:
     typer.echo(f"registered: {'yes' if summary['plcRegistered'] else 'no'}")
 
 
-@plc_app.command("update")
+@plc_app.command(
+    "update",
+    help=(
+        "Rewrite the local did:plc genesis operation with a new PDS service URL. "
+        "Only works before the DID is registered."
+    ),
+    short_help="Update the local PLC PDS URL.",
+)
 def plc_update(
-    pds_url: Annotated[str, typer.Option("--pds-url", help="Shim/PDS service URL.")],
+    pds_url: Annotated[
+        str,
+        typer.Option(
+            "--pds-url",
+            help="HTTPS URL the DID document should advertise as the repo's PDS.",
+        ),
+    ],
     root: RootOption = Path("."),
     no_publish: Annotated[
         bool,
@@ -210,12 +349,19 @@ def plc_update(
     typer.echo(f"published: {'yes' if result.published else 'no'}")
 
 
-@plc_app.command("submit")
+@plc_app.command(
+    "submit",
+    help=(
+        "Submit the local did:plc genesis operation to a PLC directory. This makes the "
+        "DID public and is intentionally separate from init and commit."
+    ),
+    short_help="Submit the local PLC operation.",
+)
 def plc_submit(
     root: RootOption = Path("."),
     directory: Annotated[
         str,
-        typer.Option("--directory", help="PLC directory base URL."),
+        typer.Option("--directory", help="PLC directory base URL to submit to."),
     ] = "https://plc.directory",
 ) -> None:
     result = submit_plc_operation(root, directory=directory)
