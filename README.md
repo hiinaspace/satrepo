@@ -278,6 +278,14 @@ uv run satrepo --help
 uv run satrepo-shim --help
 ```
 
+### Remote Signing Experiment
+
+There is an experimental repo-signing split documented in
+[`docs/remote-signing-pds.md`](docs/remote-signing-pds.md). It lets
+`satrepo commit` delegate commit signatures to `satrepo signer serve`, as a
+small proof for a PDS shape where OAuth/write handling and key custody are
+separate.
+
 ## Public Deployment Sketch
 
 A minimal public setup has one repo per shim process:

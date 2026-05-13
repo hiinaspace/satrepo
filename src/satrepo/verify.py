@@ -16,7 +16,6 @@ from carbox.car import read_car
 from .config import read_config
 from .errors import SatRepoError
 from .jsonio import read_json
-from .keys import read_private_key
 from .manifest import read_manifest
 from .paths import discover_root
 from .rkeys import validate_rkey
@@ -59,8 +58,8 @@ def verify_repo(root: Path | str | None = None) -> VerificationResult:
     storage = StaticStorage(
         paths=paths,
         config=config,
-        signing_key=read_private_key(config.key_dir / "signing.key"),
-        rotation_key=read_private_key(config.key_dir / "rotation.key"),
+        signing_key=signing_key,
+        rotation_key=None,
     )
     repo = storage.load_repo(config.did)
     if not repo or not repo.head:

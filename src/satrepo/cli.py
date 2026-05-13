@@ -10,18 +10,21 @@ import click
 import typer
 
 from .bsky import create_bsky_post
+from .config import read_config
 from .errors import SatRepoError
 from .init_repo import init_repo
+from .paths import discover_root
 from .plc import plc_summary, submit_plc_operation, update_pds_url
 from .porcelain import commit_log, worktree_status
 from .publish import publish
+from .remote_signer import run_signer_server
 from .standard_site import create_standard_document, create_standard_publication
 from .verify import format_result, verify_repo
 
 app = typer.Typer(
     help=(
-        "Author an ATProto repo from local JSON files, sign commits locally, "
-        "and regenerate a static site that can be served by satrepo-shim."
+        "Author an ATProto repo from local JSON files, create signed commits, and "
+        "regenerate a static site that can be served by satrepo-shim."
     ),
     epilog=(
         "Typical flow: satrepo init alice.example --pds-url https://satrepo.example; "
@@ -48,9 +51,18 @@ standard_app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
+signer_app = typer.Typer(
+    help=(
+        "Experimental remote signing provider commands. These let repo commits be "
+        "signed outside the process writing repo artifacts."
+    ),
+    no_args_is_help=True,
+    add_completion=False,
+)
 app.add_typer(plc_app, name="plc")
 app.add_typer(bsky_app, name="bsky")
 app.add_typer(standard_app, name="standard")
+app.add_typer(signer_app, name="signer")
 
 
 RootOption = Annotated[
@@ -166,8 +178,28 @@ def log_command(
     ),
     short_help="Create a signed repo commit from the worktree.",
 )
-def commit_command(root: RootOption = Path(".")) -> None:
-    _run_publish(root, verb="committed")
+def commit_command(
+    root: RootOption = Path("."),
+    signer_url: Annotated[
+        str | None,
+        typer.Option(
+            "--signer-url",
+            help=(
+                "Experimental remote signer base URL. When set, commit signing is "
+                "delegated to /satrepo-signer/v0/sign."
+            ),
+        ),
+    ] = None,
+    signer_token: Annotated[
+        str | None,
+        typer.Option(
+            "--signer-token",
+            envvar="SATREPO_SIGNER_TOKEN",
+            help="Bearer token for --signer-url. Can also be set as SATREPO_SIGNER_TOKEN.",
+        ),
+    ] = None,
+) -> None:
+    _run_publish(root, verb="committed", signer_url=signer_url, signer_token=signer_token)
 
 
 @app.command(
@@ -373,6 +405,56 @@ def plc_submit(
     typer.echo(f"directory: {result.directory}")
 
 
+@signer_app.command(
+    "serve",
+    help=(
+        "Serve the experimental signing-provider HTTP API for one repo signing key. "
+        "By default this loads the current repo's private signing.key, but the writer "
+        "process can then use only --signer-url."
+    ),
+    short_help="Serve a remote signing provider.",
+)
+def signer_serve(
+    root: RootOption = Path("."),
+    key_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--key-path",
+            help="Private signing key path. Defaults to the repo's configured signing.key.",
+        ),
+    ] = None,
+    host: Annotated[
+        str,
+        typer.Option("--host", help="Host/interface to bind."),
+    ] = "127.0.0.1",
+    port: Annotated[
+        int,
+        typer.Option("--port", min=1, max=65535, help="TCP port to bind."),
+    ] = 8790,
+    token: Annotated[
+        str | None,
+        typer.Option(
+            "--token",
+            envvar="SATREPO_SIGNER_TOKEN",
+            help="Optional bearer token required for signing requests.",
+        ),
+    ] = None,
+) -> None:
+    paths = discover_root(root)
+    config = read_config(paths.config)
+    signing_key_path = key_path or (config.key_dir / "signing.key")
+    typer.echo(f"serving signer for {config.did}")
+    typer.echo(f"key: {signing_key_path}")
+    typer.echo(f"url: http://{host}:{port}/satrepo-signer/v0/health")
+    run_signer_server(
+        signing_key_path=signing_key_path,
+        host=host,
+        port=port,
+        token=token,
+        allowed_did=config.did,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     command = typer.main.get_command(app)
     try:
@@ -392,8 +474,14 @@ def main(argv: list[str] | None = None) -> int:
         return exc.exit_code
 
 
-def _run_publish(root: Path, *, verb: str) -> None:
-    result = publish(root)
+def _run_publish(
+    root: Path,
+    *,
+    verb: str,
+    signer_url: str | None = None,
+    signer_token: str | None = None,
+) -> None:
+    result = publish(root, signer_url=signer_url, signer_token=signer_token)
     typer.echo(f"{verb} {result.did}")
     typer.echo(f"head: {result.head or '(none)'}")
     typer.echo(f"rev: {result.rev or '(none)'}")

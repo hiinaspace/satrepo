@@ -47,10 +47,10 @@ class Document:
     publication: Publication
 
 
-def render_standard_site(paths: RepoPaths, config: RepoConfig) -> None:
+def render_standard_site(paths: RepoPaths, config: RepoConfig, *, signing_key=None) -> None:
     """Render committed Standard.site records into site/."""
 
-    records = _committed_records(paths, config)
+    records = _committed_records(paths, config, signing_key=signing_key)
     publications = _publications(config, records)
     documents = _documents(config, records, publications)
 
@@ -68,8 +68,14 @@ def render_standard_site(paths: RepoPaths, config: RepoConfig) -> None:
     write_json_atomic(paths.state / GENERATED_REGISTRY, sorted(generated_paths))
 
 
-def _committed_records(paths: RepoPaths, config: RepoConfig) -> list[RepoRecord]:
-    signing_key = read_private_key(config.key_dir / "signing.key")
+def _committed_records(
+    paths: RepoPaths,
+    config: RepoConfig,
+    *,
+    signing_key=None,
+) -> list[RepoRecord]:
+    if signing_key is None:
+        signing_key = read_private_key(config.key_dir / "signing.key")
     rotation_key = read_private_key(config.key_dir / "rotation.key")
     storage = StaticStorage(
         paths=paths,

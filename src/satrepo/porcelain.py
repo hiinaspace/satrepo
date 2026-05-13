@@ -50,8 +50,9 @@ class CommitLogEntry:
     ops: tuple[WorktreeChange, ...]
 
 
-def load_storage(paths: RepoPaths, config: RepoConfig) -> StaticStorage:
-    signing_key = read_private_key(config.key_dir / "signing.key")
+def load_storage(paths: RepoPaths, config: RepoConfig, *, signing_key=None) -> StaticStorage:
+    if signing_key is None:
+        signing_key = read_private_key(config.key_dir / "signing.key")
     rotation_key = read_private_key(config.key_dir / "rotation.key")
     return StaticStorage(
         paths=paths,

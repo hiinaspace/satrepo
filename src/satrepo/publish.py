@@ -11,6 +11,7 @@ from .jsonio import read_json
 from .manifest import write_manifest
 from .paths import RepoPaths, discover_root
 from .porcelain import diff_writes, load_storage
+from .remote_signer import RemoteSigningKey, assert_signer_matches_did_doc
 from .static_site import render_standard_site
 from .worktree import scan_records
 
@@ -28,12 +29,21 @@ class PublishResult:
     events: int
 
 
-def publish(root: Path | str | None = None) -> PublishResult:
+def publish(
+    root: Path | str | None = None,
+    *,
+    signer_url: str | None = None,
+    signer_token: str | None = None,
+) -> PublishResult:
     from arroba.repo import Repo
 
     paths = discover_root(root)
     config = read_config(paths.config)
-    storage = load_storage(paths, config)
+    signing_key = None
+    if signer_url:
+        signing_key = RemoteSigningKey(signer_url, token=signer_token)
+        assert_signer_matches_did_doc(signing_key, paths.state / "did.json")
+    storage = load_storage(paths, config, signing_key=signing_key)
 
     repo = storage.load_repo(config.did)
     if repo is None:
@@ -51,7 +61,7 @@ def publish(root: Path | str | None = None) -> PublishResult:
 
     storage.write_snapshot()
     manifest = rebuild_manifest(paths, config)
-    publish_static(paths, config, manifest)
+    publish_static(paths, config, manifest, signing_key=storage.signing_key)
 
     head = manifest["head"] or {}
     return PublishResult(
@@ -93,7 +103,13 @@ def rebuild_manifest(paths: RepoPaths, config: RepoConfig) -> dict:
     return manifest
 
 
-def publish_static(paths: RepoPaths, config: RepoConfig, manifest: dict) -> None:
+def publish_static(
+    paths: RepoPaths,
+    config: RepoConfig,
+    manifest: dict,
+    *,
+    signing_key=None,
+) -> None:
     """Copy bare repo artifacts into site/, writing manifest last."""
 
     for subdir in (
@@ -118,7 +134,7 @@ def publish_static(paths: RepoPaths, config: RepoConfig, manifest: dict) -> None
     _copy_tree_files(paths.state / "blobs", paths.site / "repo" / "blobs")
     _copy_if_exists(paths.state / "snapshot.car", paths.site / "repo" / "snapshot.car")
 
-    render_standard_site(paths, config)
+    render_standard_site(paths, config, signing_key=signing_key)
 
     write_manifest(paths.site_manifest, manifest)
     _make_public_file(paths.site_manifest)
